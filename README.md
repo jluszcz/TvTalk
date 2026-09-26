@@ -14,8 +14,9 @@ Built on Cloudflare Workers with a D1 SQLite database, behind Cloudflare Access.
 
 - Add and edit shows and seasons from the board and the season view — nothing
   is deletable from the UI, but nothing has to be pre-loaded either
-- A show filter on the board, and a per-show "currently watching" pick for
-  each column, both remembered per browser
+- A show filter on the board, remembered per browser, and a per-show
+  "currently watching" pick for each column, stored server-side and shown to
+  everyone in Now Watching
 - One checkbox column per person/couple; you can only change your own (Access-derived identity)
 - Couples share a column — either partner's login can toggle it
 - Discussion notes are bylined to the individual who wrote them, so a shared column speaks with two voices
@@ -238,9 +239,12 @@ stdlib-only Python, reads no network, and never touches production — it only
 opens the local SQLite file under `.wrangler/state/`, which `npm run dev`
 must have created at least once.
 
+`--season` takes the season's id, not its number — a fresh seed has only ids 1
+(_The Great British Bake Off_ Season 14) and 2 (_Lanterns_ Season 1).
+
 ```bash
 scripts/insert-test-post.py                                     # random author, season 1 episode 1, now
-scripts/insert-test-post.py --author Bob --season 5 --episode 3 --length 60
+scripts/insert-test-post.py --author Bob --season 2 --episode 3 --length 60
 scripts/insert-test-post.py --time 5 --unit hours                # 5 hours ago
 scripts/insert-test-post.py --time 2 --unit days --future        # 2 days from now
 ```

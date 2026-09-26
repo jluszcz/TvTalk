@@ -7,9 +7,13 @@ Only ever opens the local miniflare SQLite file under
 .wrangler/state/v3/d1/miniflare-D1DatabaseObject/ — no network calls, no
 wrangler CLI — so it cannot reach production.
 
+--season takes the season's id, not its number — a fresh seed
+(migrations/0002_seed.sql) has only ids 1 (The Great British Bake Off Season
+14) and 2 (Lanterns Season 1).
+
 Usage:
     scripts/insert-test-post.py
-    scripts/insert-test-post.py --author Bob --season 5 --episode 3 --length 60
+    scripts/insert-test-post.py --author Bob --season 2 --episode 3 --length 60
     scripts/insert-test-post.py --time 5 --unit hours
     scripts/insert-test-post.py --time 2 --unit days --future
 """
@@ -103,7 +107,7 @@ def compute_created_at(time, unit, future):
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--author", help="Roster name (e.g. Alice, Bob). Default: random.")
-    parser.add_argument("--season", type=int, default=1, help="Season id. Default: 1.")
+    parser.add_argument("--season", type=int, default=1, help="Season id, not its number. Default: 1.")
     parser.add_argument("--episode", type=int, default=1, help="Episode number. Default: 1.")
     parser.add_argument("--length", type=int, default=20, help="Post length in words. Default: 20.")
     parser.add_argument("--time", type=int, default=0, help="Relative time magnitude. Default: 0 (now).")

@@ -8,8 +8,10 @@
 -- so these user ids exist. Do NOT run this against production; it inserts
 -- fake watched rows.
 
--- Season 1 fully watched (grays out, sinks to the bottom); a partial on season 2.
+-- Season id 1 (The Great British Bake Off Season 14) fully watched (grays out,
+-- sinks to the bottom); a partial on season id 2 (Lanterns Season 1).
 INSERT OR IGNORE INTO watched (user_id, season_id, created_at) VALUES
     ('user-1', 1, '2026-01-01T00:00:00Z'),
     ('user-2', 1, '2026-01-01T00:00:00Z'),
+    ('user-3', 1, '2026-01-01T00:00:00Z'),
     ('user-1', 2, '2026-01-02T00:00:00Z');

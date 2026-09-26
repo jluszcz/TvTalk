@@ -37,9 +37,11 @@ beforeEach(async () => {
     await env.DB.exec('DELETE FROM reveals');
     await env.DB.exec('DELETE FROM posts');
     await env.DB.exec('DELETE FROM watched');
+    await env.DB.exec('DELETE FROM currently_watching');
     await env.DB.exec('DELETE FROM user_emails');
     await env.DB.exec('DELETE FROM users');
     await env.DB.exec('DELETE FROM seasons');
+    await env.DB.exec('DELETE FROM shows');
     await env.DB.exec("INSERT INTO users (id, name, sort_order) VALUES ('user-alice', 'Alice', 1)");
     await env.DB.exec(
         "INSERT INTO users (id, name, sort_order) VALUES ('user-bob', 'Bob & Carol', 2)",
@@ -51,9 +53,16 @@ beforeEach(async () => {
             "('carol@example.com', 'user-bob', 'Carol')",
     );
     await env.DB.exec(
-        'INSERT INTO seasons (id, subtitle, wikipedia_url, episode_count) VALUES ' +
-            "(45, '', 'https://en.wikipedia.org/wiki/Survivor_45', 13), " +
-            "(46, '', 'https://en.wikipedia.org/wiki/Survivor_46', 13)",
+        'INSERT INTO shows (id, name, url, created_at) VALUES ' +
+            "(1, 'Show One', 'https://example.com/show-one', '2026-01-01T00:00:00.000Z')",
+    );
+    // Season 1 backs the "names the season and its show" test below; 45 and 46
+    // are the fixture the rest of this file's tests grew up with.
+    await env.DB.exec(
+        'INSERT INTO seasons (id, show_id, number, subtitle, url, episode_count, created_at) VALUES ' +
+            "(1, 1, 1, 'Opening Act', 'https://example.com/show-one/1', 13, '2026-01-01T00:00:00.000Z'), " +
+            "(45, 1, 45, '', '', 13, '2026-01-01T00:00:00.000Z'), " +
+            "(46, 1, 46, '', '', 13, '2026-01-01T00:00:00.000Z')",
     );
 });
 
@@ -241,6 +250,18 @@ describe('GET /api/seasons/:season_id/discussion', () => {
 
     it('returns 400 for a non-numeric season id', async () => {
         expect((await req('GET', '/api/seasons/abc/discussion')).status).toBe(400);
+    });
+
+    it('names the season and its show', async () => {
+        const body = await (await req('GET', '/api/seasons/1/discussion')).json();
+        expect(body.season).toEqual({
+            id: 1,
+            number: 1,
+            subtitle: 'Opening Act',
+            url: 'https://example.com/show-one/1',
+            episode_count: 13,
+            show: { id: 1, name: 'Show One', url: 'https://example.com/show-one' },
+        });
     });
 });
 

@@ -26,6 +26,7 @@ const watchedCreate = z.object({
 });
 
 const currentlyWatchingUpdate = z.object({
+    show_id: z.number().int().positive({ message: 'show_id must be a positive integer' }),
     season_id: z
         .number()
         .int()
@@ -174,16 +175,17 @@ app.get('/api/board', async (c) => {
     const [
         me,
         { results: users },
+        { results: shows },
         { results: seasons },
         { results: watched },
         { results: counts },
+        { results: current },
     ] = await Promise.all([
         callerUser(c),
+        c.env.DB.prepare('SELECT id, name FROM users ORDER BY sort_order ASC, name ASC').all(),
+        c.env.DB.prepare('SELECT id, name, url FROM shows ORDER BY name ASC').all(),
         c.env.DB.prepare(
-            'SELECT id, name, currently_watching_season_id FROM users ORDER BY sort_order ASC, name ASC',
-        ).all(),
-        c.env.DB.prepare(
-            'SELECT id, subtitle, wikipedia_url, episode_count FROM seasons ORDER BY id ASC',
+            'SELECT id, show_id, number, subtitle, url, episode_count FROM seasons ORDER BY id ASC',
         ).all(),
         c.env.DB.prepare('SELECT season_id, user_id FROM watched').all(),
         // Post counts let the board show which seasons have any discussion at
@@ -191,6 +193,7 @@ app.get('/api/board', async (c) => {
         c.env.DB.prepare(
             'SELECT season_id, COUNT(*) AS post_count FROM posts GROUP BY season_id',
         ).all(),
+        c.env.DB.prepare('SELECT user_id, show_id, season_id FROM currently_watching').all(),
     ]);
 
     const watchedBySeason = new Map(seasons.map((s) => [s.id, []]));
@@ -200,19 +203,21 @@ app.get('/api/board', async (c) => {
 
     const postCounts = new Map(counts.map((row) => [row.season_id, row.post_count]));
 
-    const board = seasons.map((s) => ({
-        id: s.id,
-        subtitle: s.subtitle,
-        wikipedia_url: s.wikipedia_url,
-        episode_count: s.episode_count,
-        post_count: postCounts.get(s.id) ?? 0,
-        watched_by: watchedBySeason.get(s.id),
-    }));
+    const currentByUser = new Map(users.map((u) => [u.id, {}]));
+    for (const row of current) {
+        const picks = currentByUser.get(row.user_id);
+        if (picks) picks[row.show_id] = row.season_id;
+    }
 
     return c.json({
         me: me ? { id: me.id, name: me.name } : null,
-        users,
-        seasons: board,
+        shows,
+        users: users.map((u) => ({ ...u, currently_watching: currentByUser.get(u.id) })),
+        seasons: seasons.map((s) => ({
+            ...s,
+            post_count: postCounts.get(s.id) ?? 0,
+            watched_by: watchedBySeason.get(s.id),
+        })),
     });
 });
 
@@ -223,38 +228,46 @@ app.put(
         const me = await callerUser(c);
         if (!me) return c.json({ error: 'Your account is not on the watch list' }, 403);
 
-        const { season_id } = c.req.valid('json');
+        const { show_id, season_id } = c.req.valid('json');
 
-        if (season_id !== null) {
-            const season = await c.env.DB.prepare('SELECT id FROM seasons WHERE id = ?')
-                .bind(season_id)
-                .first();
-            if (!season) return c.json({ error: `Unknown season: ${season_id}` }, 404);
+        const show = await c.env.DB.prepare('SELECT id FROM shows WHERE id = ?')
+            .bind(show_id)
+            .first();
+        if (!show) return c.json({ error: `Unknown show: ${show_id}` }, 404);
 
-            // Invariant: your currently-watching season is always one of your
-            // unwatched seasons. The picker only offers those; enforce it here
-            // too so a direct API call can't break it. The not-watched check and
-            // the write are a single statement so a concurrent POST /api/watched
-            // can't land between them and leave you "watching" a watched season.
-            const { meta } = await c.env.DB.prepare(
-                `UPDATE users SET currently_watching_season_id = ?1
-                 WHERE id = ?2
-                   AND NOT EXISTS (SELECT 1 FROM watched WHERE user_id = ?2 AND season_id = ?1)`,
-            )
-                .bind(season_id, me.id)
-                .run();
-            if (meta.changes === 0) {
-                return c.json({ error: `You have already watched season ${season_id}` }, 409);
-            }
-        } else {
+        if (season_id === null) {
             await c.env.DB.prepare(
-                'UPDATE users SET currently_watching_season_id = NULL WHERE id = ?',
+                'DELETE FROM currently_watching WHERE user_id = ? AND show_id = ?',
             )
-                .bind(me.id)
+                .bind(me.id, show_id)
                 .run();
+            return c.json({ success: true, user_id: me.id, show_id, season_id });
         }
 
-        return c.json({ success: true, user_id: me.id, season_id });
+        const season = await c.env.DB.prepare('SELECT id, show_id FROM seasons WHERE id = ?')
+            .bind(season_id)
+            .first();
+        if (!season) return c.json({ error: `Unknown season: ${season_id}` }, 404);
+        if (season.show_id !== show_id) {
+            return c.json({ error: `Season ${season_id} is not part of show ${show_id}` }, 400);
+        }
+
+        // Invariant: your current season for a show is always one you haven't
+        // watched. The not-watched check and the write are one statement so a
+        // concurrent POST /api/watched can't land between them.
+        const { meta } = await c.env.DB.prepare(
+            `INSERT INTO currently_watching (user_id, show_id, season_id)
+             SELECT ?1, ?2, ?3
+             WHERE NOT EXISTS (SELECT 1 FROM watched WHERE user_id = ?1 AND season_id = ?3)
+             ON CONFLICT (user_id, show_id) DO UPDATE SET season_id = excluded.season_id`,
+        )
+            .bind(me.id, show_id, season_id)
+            .run();
+        if (meta.changes === 0) {
+            return c.json({ error: `You have already watched season ${season_id}` }, 409);
+        }
+
+        return c.json({ success: true, user_id: me.id, show_id, season_id });
     },
 );
 
@@ -273,11 +286,12 @@ app.post('/api/watched', zValidator('json', watchedCreate, onInvalid), async (c)
         c.env.DB.prepare(
             'INSERT OR IGNORE INTO watched (user_id, season_id, created_at) VALUES (?, ?, ?)',
         ).bind(me.id, season_id, now),
-        // Finishing a season clears it as your currently-watching season — you
-        // can't be mid-watch on something you've marked seen. No-op otherwise.
-        c.env.DB.prepare(
-            'UPDATE users SET currently_watching_season_id = NULL WHERE id = ? AND currently_watching_season_id = ?',
-        ).bind(me.id, season_id),
+        // Finishing a season clears it as your current season for its show —
+        // you can't be mid-watch on something you've marked seen.
+        c.env.DB.prepare('DELETE FROM currently_watching WHERE user_id = ? AND season_id = ?').bind(
+            me.id,
+            season_id,
+        ),
     ]);
 
     return c.json({ success: true, user_id: me.id, season_id }, 201);
@@ -292,9 +306,9 @@ app.delete('/api/watched/:season_id', async (c) => {
         return c.json({ error: 'season_id must be a positive integer' }, 400);
     }
 
-    // Invariant: a user's currently_watching_season_id is always one of their
-    // *unwatched* seasons (the picker only offers those, and POST /api/watched
-    // clears it on finish). Unmarking a season leaves it unwatched — a valid
+    // Invariant: a column's currently_watching rows only ever name *unwatched*
+    // seasons (the picker only offers those, and POST /api/watched clears the
+    // row on finish). Unmarking a season leaves it unwatched — a valid
     // currently-watching state — but we deliberately don't restore it here:
     // there's no signal the user resumed it, so we leave their pick untouched.
     await c.env.DB.prepare('DELETE FROM watched WHERE user_id = ? AND season_id = ?')
@@ -323,7 +337,7 @@ async function resolveEpisode(c) {
     }
 
     const season = await c.env.DB.prepare(
-        'SELECT id, subtitle, wikipedia_url, episode_count FROM seasons WHERE id = ?',
+        'SELECT id, show_id, number, subtitle, url, episode_count FROM seasons WHERE id = ?',
     )
         .bind(seasonId)
         .first();
@@ -555,12 +569,23 @@ app.get('/api/seasons/:season_id/discussion', async (c) => {
         return c.json({ error: 'season_id must be a positive integer' }, 400);
     }
 
-    const season = await c.env.DB.prepare(
-        'SELECT id, subtitle, wikipedia_url, episode_count FROM seasons WHERE id = ?',
+    const seasonRow = await c.env.DB.prepare(
+        `SELECT seasons.id, seasons.number, seasons.subtitle, seasons.url, seasons.episode_count,
+                shows.id AS show_id, shows.name AS show_name, shows.url AS show_url
+         FROM seasons JOIN shows ON shows.id = seasons.show_id
+         WHERE seasons.id = ?`,
     )
         .bind(seasonId)
         .first();
-    if (!season) return c.json({ error: `Unknown season: ${seasonId}` }, 404);
+    if (!seasonRow) return c.json({ error: `Unknown season: ${seasonId}` }, 404);
+    const season = {
+        id: seasonRow.id,
+        number: seasonRow.number,
+        subtitle: seasonRow.subtitle,
+        url: seasonRow.url,
+        episode_count: seasonRow.episode_count,
+        show: { id: seasonRow.show_id, name: seasonRow.show_name, url: seasonRow.show_url },
+    };
 
     const me = await callerUser(c);
 
@@ -797,12 +822,16 @@ app.get('/api/feed', async (c) => {
     const [{ results: rows }, people, seenRow] = await Promise.all([
         c.env.DB.prepare(
             `SELECT posts.season_id   AS season_id,
+                    seasons.number    AS season_number,
+                    shows.name        AS show_name,
                     posts.episode     AS episode,
                     posts.user_id     AS user_id,
                     posts.author_email AS author_email,
                     posts.created_at  AS created_at,
                     COALESCE(LOWER(posts.author_email), 'user:' || posts.user_id) AS author_key
              FROM posts
+             JOIN seasons ON seasons.id = posts.season_id
+             JOIN shows   ON shows.id   = seasons.show_id
              WHERE posts.created_at >= ?
                AND CASE WHEN posts.author_email IS NULL
                         THEN posts.user_id <> ?
@@ -843,6 +872,8 @@ app.get('/api/feed', async (c) => {
             // does, so a note reads the same in the feed as on its board.
             author_name: attribute(group, people, me).author_name,
             season_id: group.season_id,
+            show_name: group.show_name,
+            season_number: group.season_number,
             episode: group.episode,
             at: group.at,
             unread: group.unread,

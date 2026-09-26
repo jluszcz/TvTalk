@@ -1,35 +1,31 @@
 import { describe, it, expect } from 'vitest';
 import { env } from 'cloudflare:test';
 
-// The episode counts in migrations 0005 and 0012 are transcribed by hand from Wikipedia
-// and are the likeliest place in this feature for a quiet error. A dropped row
-// leaves a 0; a slipped digit leaves a 130. Both are caught here.
-describe('seeded episode counts', () => {
-    it('gives all 51 seasons a plausible episode count', async () => {
+describe('seed', () => {
+    it('seeds Bake Off Season 14 and Lanterns Season 1', async () => {
         const { results } = await env.DB.prepare(
-            'SELECT id, episode_count FROM seasons ORDER BY id ASC',
+            `SELECT shows.name AS show, seasons.number AS number, seasons.episode_count AS episodes
+             FROM seasons JOIN shows ON shows.id = seasons.show_id
+             ORDER BY shows.name ASC`,
         ).all();
-        expect(results).toHaveLength(51);
-        for (const season of results) {
-            expect(season.episode_count).toBeGreaterThanOrEqual(12);
-            expect(season.episode_count).toBeLessThanOrEqual(17);
-        }
+        expect(results).toEqual([
+            { show: 'Lanterns', number: 1, episodes: 8 },
+            { show: 'The Great British Bake Off', number: 14, episodes: 10 },
+        ]);
     });
 
-    it('has the new discussion tables', async () => {
-        const { results } = await env.DB.prepare(
-            "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
-        ).all();
-        const names = results.map((r) => r.name);
-        expect(names).toContain('posts');
-        expect(names).toContain('reveals');
-        expect(names).toContain('watch_sessions');
+    it('refuses a second show whose name differs only in case', async () => {
+        await expect(
+            env.DB.prepare(
+                "INSERT INTO shows (name, url, created_at) VALUES ('lanterns', '', '2026-09-25T00:00:00.000Z')",
+            ).run(),
+        ).rejects.toThrow(/UNIQUE/);
     });
 });
 
-// The two columns individual attribution rests on. Both are added by ALTER
-// TABLE, which rewrites the stored CREATE statement, so sqlite_master is a
-// faithful record of whether migration 0006 actually applied.
+// The two columns individual attribution rests on, both defined in
+// 0001_initial.sql. sqlite_master is a faithful record of whether they
+// actually applied.
 describe('individual author columns', () => {
     it('adds a per-person name and a post author', async () => {
         const { results } = await env.DB.prepare(
@@ -37,20 +33,21 @@ describe('individual author columns', () => {
              WHERE type = 'table' AND name IN ('posts', 'user_emails')`,
         ).all();
         const sqlFor = Object.fromEntries(results.map((r) => [r.name, r.sql]));
-        expect(sqlFor.user_emails).toContain('name TEXT');
-        expect(sqlFor.posts).toContain('author_email TEXT');
+        expect(sqlFor.user_emails).toMatch(/name\s+TEXT/);
+        expect(sqlFor.posts).toMatch(/author_email\s+TEXT/);
     });
 });
 
-// Migration 0007. The two posts columns arrive by ALTER TABLE, which rewrites
-// the stored CREATE statement, so sqlite_master records whether they applied.
+// The reply, edit, and reaction columns and tables, all defined in
+// 0001_initial.sql. sqlite_master is a faithful record of whether they
+// actually applied.
 describe('reply, edit, and reaction schema', () => {
     it('adds the reply and edit columns to posts', async () => {
         const row = await env.DB.prepare(
             "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'posts'",
         ).first();
-        expect(row.sql).toContain('reply_to_post_id INTEGER');
-        expect(row.sql).toContain('edited_at TEXT');
+        expect(row.sql).toMatch(/reply_to_post_id\s+INTEGER/);
+        expect(row.sql).toMatch(/edited_at\s+TEXT/);
     });
 
     it('creates the reactions table keyed on the individual', async () => {
@@ -113,13 +110,14 @@ describe('watch offset corrections', () => {
     });
 });
 
-// Migration 0010. GET /api/feed filters posts on created_at alone, which
-// idx_posts_board (season_id, episode, id) cannot serve — its leading column is
-// not in the query — so before this index the bell scanned the whole table on
-// every page load. Asserted through the query planner as well as sqlite_master:
-// the index existing is not the property worth having, being used is, and a
-// later index or a rewritten WHERE clause could take that away while leaving
-// the CREATE statement sitting there looking correct.
+// idx_posts_created, from 0001_initial.sql. GET /api/feed filters posts on
+// created_at alone, which idx_posts_board (season_id, episode, id) cannot
+// serve — its leading column is not in the query — so without this index the
+// bell would scan the whole table on every page load. Asserted through the
+// query planner as well as sqlite_master: the index existing is not the
+// property worth having, being used is, and a later index or a rewritten
+// WHERE clause could take that away while leaving the CREATE statement sitting
+// there looking correct.
 describe('feed window index', () => {
     it('creates idx_posts_created', async () => {
         const { results } = await env.DB.prepare(
@@ -139,10 +137,9 @@ describe('feed window index', () => {
     });
 });
 
-// Migration 0009. The column arrives by ALTER TABLE, which rewrites the stored
-// CREATE statement, so sqlite_master records whether it applied. It sits on
-// user_emails rather than users because reading the feed is something a person
-// does with their own eyes — a shared column's two logins keep separate badges.
+// feed_seen_at, defined on user_emails in 0001_initial.sql. It sits there
+// rather than on users because reading the feed is something a person does
+// with their own eyes — a shared column's two logins keep separate badges.
 describe('feed seen marks', () => {
     it('adds a per-individual feed_seen_at to user_emails', async () => {
         const row = await env.DB.prepare(

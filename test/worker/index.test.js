@@ -41,17 +41,22 @@ beforeEach(async () => {
     // Access tokens are verified against the team's published keys, so the test
     // signing key has to be served the way Cloudflare serves the real one.
     await stubJwksEndpoint();
-    // Children before parents: watch_sessions, reveals, and posts all carry
-    // foreign keys into users and seasons, and leftover rows from any of the
-    // discussion-adjacent tests below would otherwise make the DELETE FROM
-    // users / seasons further down fail.
+    // Children before parents: watch_sessions, reveals, posts, and the other
+    // per-episode tables all carry foreign keys into users and seasons, and
+    // leftover rows from any of the discussion-adjacent tests below would
+    // otherwise make the DELETE FROM users / seasons / shows further down fail.
     await env.DB.exec('DELETE FROM watch_sessions');
     await env.DB.exec('DELETE FROM reveals');
+    await env.DB.exec('DELETE FROM reactions');
+    await env.DB.exec('DELETE FROM watch_offsets');
+    await env.DB.exec('DELETE FROM episode_statuses');
     await env.DB.exec('DELETE FROM posts');
     await env.DB.exec('DELETE FROM watched');
+    await env.DB.exec('DELETE FROM currently_watching');
     await env.DB.exec('DELETE FROM user_emails');
     await env.DB.exec('DELETE FROM users');
     await env.DB.exec('DELETE FROM seasons');
+    await env.DB.exec('DELETE FROM shows');
     // 'Alice' is one person; 'Bob & Carol' is a couple sharing a column with two emails.
     await env.DB.prepare(
         "INSERT INTO users (id, name, sort_order) VALUES ('user-alice', 'Alice', 1)",
@@ -65,12 +70,18 @@ beforeEach(async () => {
             "('bob@example.com', 'user-bob'), " +
             "('carol@example.com', 'user-bob')",
     );
-    await env.DB.prepare(
-        "INSERT INTO seasons (id, subtitle, wikipedia_url, episode_count) VALUES (1, 'Borneo', 'https://en.wikipedia.org/wiki/Survivor:_Borneo', 13)",
-    ).run();
-    await env.DB.prepare(
-        "INSERT INTO seasons (id, subtitle, wikipedia_url, episode_count) VALUES (41, '', 'https://en.wikipedia.org/wiki/Survivor_41', 13)",
-    ).run();
+    await env.DB.exec(
+        'INSERT INTO shows (id, name, url, created_at) VALUES ' +
+            "(1, 'Show One', 'https://example.com/show-one', '2026-01-01T00:00:00.000Z'), " +
+            "(2, 'Another Show', '', '2026-01-01T00:00:00.000Z')",
+    );
+    // Season ids 1 and 41 are kept from the fixture this suite grew up with, so
+    // the many tests that address them by id need no change.
+    await env.DB.exec(
+        'INSERT INTO seasons (id, show_id, number, subtitle, url, episode_count, created_at) VALUES ' +
+            "(1, 1, 1, 'Opening Act', 'https://example.com/show-one/1', 13, '2026-01-01T00:00:00.000Z'), " +
+            "(41, 2, 41, '', '', 13, '2026-01-01T00:00:00.000Z')",
+    );
 });
 
 // ---------------------------------------------------------------------------
@@ -241,20 +252,40 @@ describe('GET /api/board', () => {
         expect(me.id).toBe('user-alice');
     });
 
-    it('includes currently_watching_season_id (null by default) per user', async () => {
-        const { users } = await (await req('GET', '/api/board')).json();
-        expect(users[0].currently_watching_season_id).toBeNull();
-        expect(users[1].currently_watching_season_id).toBeNull();
+    it('lists shows by name and gives each season its show, number, and url', async () => {
+        const body = await (await req('GET', '/api/board')).json();
+        expect(body.shows).toEqual([
+            { id: 2, name: 'Another Show', url: '' },
+            { id: 1, name: 'Show One', url: 'https://example.com/show-one' },
+        ]);
+        const s1 = body.seasons.find((s) => s.id === 1);
+        expect(s1).toMatchObject({
+            show_id: 1,
+            number: 1,
+            subtitle: 'Opening Act',
+            url: 'https://example.com/show-one/1',
+            episode_count: 13,
+        });
+        expect(s1).not.toHaveProperty('wikipedia_url');
     });
 
-    it('reflects currently_watching_season_id after it is set', async () => {
+    it('gives each user an empty currently_watching map by default', async () => {
+        const body = await (await req('GET', '/api/board')).json();
+        for (const u of body.users) expect(u.currently_watching).toEqual({});
+    });
+
+    it('reports currently_watching per show', async () => {
         await req('PUT', '/api/currently-watching', {
-            body: { season_id: 1 },
+            body: { show_id: 1, season_id: 1 },
             email: 'alice@example.com',
         });
-        const { users } = await (await req('GET', '/api/board')).json();
-        const alice = users.find((u) => u.id === 'user-alice');
-        expect(alice.currently_watching_season_id).toBe(1);
+        await req('PUT', '/api/currently-watching', {
+            body: { show_id: 2, season_id: 41 },
+            email: 'alice@example.com',
+        });
+        const body = await (await req('GET', '/api/board')).json();
+        const alice = body.users.find((u) => u.id === 'user-alice');
+        expect(alice.currently_watching).toEqual({ 1: 1, 2: 41 });
     });
 
     it('reports watched_by per season', async () => {
@@ -265,11 +296,6 @@ describe('GET /api/board', () => {
         expect(s1.watched_by.sort()).toEqual(['user-alice', 'user-bob']);
         const s41 = seasons.find((s) => s.id === 41);
         expect(s41.watched_by).toEqual([]);
-    });
-
-    it('includes episode_count per season', async () => {
-        const { seasons } = await (await req('GET', '/api/board')).json();
-        expect(seasons.find((s) => s.id === 1).episode_count).toBe(13);
     });
 
     it('reports post_count across every episode of a season', async () => {
@@ -294,56 +320,61 @@ describe('GET /api/board', () => {
 describe('PUT /api/currently-watching', () => {
     it('sets the currently-watching season for the caller', async () => {
         const r = await req('PUT', '/api/currently-watching', {
-            body: { season_id: 1 },
+            body: { show_id: 1, season_id: 1 },
             email: 'alice@example.com',
         });
         expect(r.status).toBe(200);
         const body = await r.json();
-        expect(body).toMatchObject({ success: true, user_id: 'user-alice', season_id: 1 });
+        expect(body).toMatchObject({
+            success: true,
+            user_id: 'user-alice',
+            show_id: 1,
+            season_id: 1,
+        });
     });
 
     it('clears the currently-watching season when season_id is null', async () => {
         await req('PUT', '/api/currently-watching', {
-            body: { season_id: 1 },
+            body: { show_id: 1, season_id: 1 },
             email: 'alice@example.com',
         });
         await req('PUT', '/api/currently-watching', {
-            body: { season_id: null },
+            body: { show_id: 1, season_id: null },
             email: 'alice@example.com',
         });
         const { users } = await (await req('GET', '/api/board')).json();
         const alice = users.find((u) => u.id === 'user-alice');
-        expect(alice.currently_watching_season_id).toBeNull();
+        expect(alice.currently_watching).toEqual({});
     });
 
     it('updates the board response immediately', async () => {
         await req('PUT', '/api/currently-watching', {
-            body: { season_id: 41 },
+            body: { show_id: 2, season_id: 41 },
             email: 'bob@example.com',
         });
         const { users } = await (await req('GET', '/api/board')).json();
         const bob = users.find((u) => u.id === 'user-bob');
-        expect(bob.currently_watching_season_id).toBe(41);
+        expect(bob.currently_watching).toEqual({ 2: 41 });
     });
 
     it('only updates the caller — other users are unaffected', async () => {
         await req('PUT', '/api/currently-watching', {
-            body: { season_id: 1 },
+            body: { show_id: 1, season_id: 1 },
             email: 'alice@example.com',
         });
         const { users } = await (await req('GET', '/api/board')).json();
         const bob = users.find((u) => u.id === 'user-bob');
-        expect(bob.currently_watching_season_id).toBeNull();
+        expect(bob.currently_watching).toEqual({});
     });
 
     it('either partner of a shared column can set it', async () => {
         await req('PUT', '/api/currently-watching', {
-            body: { season_id: 1 },
+            body: { show_id: 1, season_id: 1 },
             email: 'carol@example.com',
         });
         const { users } = await (await req('GET', '/api/board')).json();
         const bob = users.find((u) => u.id === 'user-bob');
-        expect(bob.currently_watching_season_id).toBe(1);
+        expect(bob.currently_watching).toEqual({ 1: 1 });
     });
 
     it('is idempotent — setting the same season twice returns 200', async () => {
@@ -351,27 +382,29 @@ describe('PUT /api/currently-watching', () => {
         // pins that subtlety so the atomic not-watched UPDATE can't regress it
         // into a spurious 409.
         await req('PUT', '/api/currently-watching', {
-            body: { season_id: 1 },
+            body: { show_id: 1, season_id: 1 },
             email: 'alice@example.com',
         });
         const r = await req('PUT', '/api/currently-watching', {
-            body: { season_id: 1 },
+            body: { show_id: 1, season_id: 1 },
             email: 'alice@example.com',
         });
         expect(r.status).toBe(200);
         const { users } = await (await req('GET', '/api/board')).json();
         const alice = users.find((u) => u.id === 'user-alice');
-        expect(alice.currently_watching_season_id).toBe(1);
+        expect(alice.currently_watching).toEqual({ 1: 1 });
     });
 
     it('returns 403 when there is no identity', async () => {
-        const r = await req('PUT', '/api/currently-watching', { body: { season_id: 1 } });
+        const r = await req('PUT', '/api/currently-watching', {
+            body: { show_id: 1, season_id: 1 },
+        });
         expect(r.status).toBe(403);
     });
 
     it('returns 403 when the email is not a known user', async () => {
         const r = await req('PUT', '/api/currently-watching', {
-            body: { season_id: 1 },
+            body: { show_id: 1, season_id: 1 },
             email: 'stranger@example.com',
         });
         expect(r.status).toBe(403);
@@ -379,7 +412,7 @@ describe('PUT /api/currently-watching', () => {
 
     it('returns 404 for an unknown season', async () => {
         const r = await req('PUT', '/api/currently-watching', {
-            body: { season_id: 999 },
+            body: { show_id: 1, season_id: 999 },
             email: 'alice@example.com',
         });
         expect(r.status).toBe(404);
@@ -388,27 +421,27 @@ describe('PUT /api/currently-watching', () => {
     it('returns 409 for a season the caller has already watched', async () => {
         await req('POST', '/api/watched', { body: { season_id: 1 }, email: 'alice@example.com' });
         const r = await req('PUT', '/api/currently-watching', {
-            body: { season_id: 1 },
+            body: { show_id: 1, season_id: 1 },
             email: 'alice@example.com',
         });
         expect(r.status).toBe(409);
         const { users } = await (await req('GET', '/api/board')).json();
         const alice = users.find((u) => u.id === 'user-alice');
-        expect(alice.currently_watching_season_id).toBeNull();
+        expect(alice.currently_watching).toEqual({});
     });
 
     it('allows a season someone else (but not the caller) has watched', async () => {
         await req('POST', '/api/watched', { body: { season_id: 1 }, email: 'bob@example.com' });
         const r = await req('PUT', '/api/currently-watching', {
-            body: { season_id: 1 },
+            body: { show_id: 1, season_id: 1 },
             email: 'alice@example.com',
         });
         expect(r.status).toBe(200);
     });
 
-    it('returns 400 when season_id is missing', async () => {
+    it('returns 400 when show_id is missing', async () => {
         const r = await req('PUT', '/api/currently-watching', {
-            body: {},
+            body: { season_id: 1 },
             email: 'alice@example.com',
         });
         expect(r.status).toBe(400);
@@ -416,10 +449,43 @@ describe('PUT /api/currently-watching', () => {
 
     it('returns 400 when season_id is not a positive integer', async () => {
         const r = await req('PUT', '/api/currently-watching', {
-            body: { season_id: -1 },
+            body: { show_id: 1, season_id: -1 },
             email: 'alice@example.com',
         });
         expect(r.status).toBe(400);
+    });
+
+    it('keeps one pick per show — setting one show leaves the other alone', async () => {
+        await req('PUT', '/api/currently-watching', {
+            body: { show_id: 2, season_id: 41 },
+            email: 'alice@example.com',
+        });
+        await req('PUT', '/api/currently-watching', {
+            body: { show_id: 1, season_id: 1 },
+            email: 'alice@example.com',
+        });
+        const body = await (await req('GET', '/api/board')).json();
+        expect(body.users.find((u) => u.id === 'user-alice').currently_watching).toEqual({
+            1: 1,
+            2: 41,
+        });
+    });
+
+    it('returns 400 when the season belongs to a different show', async () => {
+        const res = await req('PUT', '/api/currently-watching', {
+            body: { show_id: 1, season_id: 41 },
+            email: 'alice@example.com',
+        });
+        expect(res.status).toBe(400);
+        expect((await res.json()).error).toMatch(/not part of/);
+    });
+
+    it('returns 404 for an unknown show', async () => {
+        const res = await req('PUT', '/api/currently-watching', {
+            body: { show_id: 999, season_id: null },
+            email: 'alice@example.com',
+        });
+        expect(res.status).toBe(404);
     });
 });
 
@@ -440,24 +506,40 @@ describe('POST /api/watched', () => {
 
     it('clears the season as currently-watching when marked seen', async () => {
         await req('PUT', '/api/currently-watching', {
-            body: { season_id: 1 },
+            body: { show_id: 1, season_id: 1 },
             email: 'alice@example.com',
         });
         await req('POST', '/api/watched', { body: { season_id: 1 }, email: 'alice@example.com' });
         const { users } = await (await req('GET', '/api/board')).json();
         const alice = users.find((u) => u.id === 'user-alice');
-        expect(alice.currently_watching_season_id).toBeNull();
+        expect(alice.currently_watching).toEqual({});
     });
 
     it('leaves currently-watching alone when a different season is marked seen', async () => {
         await req('PUT', '/api/currently-watching', {
-            body: { season_id: 41 },
+            body: { show_id: 2, season_id: 41 },
             email: 'alice@example.com',
         });
         await req('POST', '/api/watched', { body: { season_id: 1 }, email: 'alice@example.com' });
         const { users } = await (await req('GET', '/api/board')).json();
         const alice = users.find((u) => u.id === 'user-alice');
-        expect(alice.currently_watching_season_id).toBe(41);
+        expect(alice.currently_watching).toEqual({ 2: 41 });
+    });
+
+    it("clears only the finished season's show pick", async () => {
+        await req('PUT', '/api/currently-watching', {
+            body: { show_id: 1, season_id: 1 },
+            email: 'alice@example.com',
+        });
+        await req('PUT', '/api/currently-watching', {
+            body: { show_id: 2, season_id: 41 },
+            email: 'alice@example.com',
+        });
+        await req('POST', '/api/watched', { body: { season_id: 1 }, email: 'alice@example.com' });
+        const body = await (await req('GET', '/api/board')).json();
+        expect(body.users.find((u) => u.id === 'user-alice').currently_watching).toEqual({
+            2: 41,
+        });
     });
 
     it('is idempotent — marking twice does not error or duplicate', async () => {

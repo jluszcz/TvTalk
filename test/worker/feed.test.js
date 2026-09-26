@@ -122,6 +122,12 @@ describe('groupNotes', () => {
         const groups = groupNotes([{ ...row(), body: 'no way he played that idol' }]);
         expect(JSON.stringify(groups)).not.toContain('idol');
     });
+
+    it('copies show_name and season_number from the first row of a group', () => {
+        const groups = groupNotes([row({ show_name: 'Show One', season_number: 1 })]);
+        expect(groups[0].show_name).toBe('Show One');
+        expect(groups[0].season_number).toBe(1);
+    });
 });
 
 const mockAssetsFetch = vi.fn().mockResolvedValue(new Response('index.html'));
@@ -177,6 +183,7 @@ describe('feed routes', () => {
         await env.DB.exec('DELETE FROM user_emails');
         await env.DB.exec('DELETE FROM users');
         await env.DB.exec('DELETE FROM seasons');
+        await env.DB.exec('DELETE FROM shows');
         await env.DB.exec(
             "INSERT INTO users (id, name, sort_order) VALUES ('user-alice', 'Alice', 1)",
         );
@@ -190,9 +197,16 @@ describe('feed routes', () => {
                 "('carol@example.com', 'user-bob', 'Carol')",
         );
         await env.DB.exec(
-            'INSERT INTO seasons (id, subtitle, wikipedia_url, episode_count) VALUES ' +
-                "(45, '', 'https://en.wikipedia.org/wiki/Survivor_45', 13), " +
-                "(46, '', 'https://en.wikipedia.org/wiki/Survivor_46', 13)",
+            'INSERT INTO shows (id, name, url, created_at) VALUES ' +
+                "(1, 'Show One', 'https://example.com/show-one', '2026-01-01T00:00:00.000Z')",
+        );
+        // Season 1 backs the "names the show and season number" test below; 45
+        // and 46 are the fixture the rest of this file's tests grew up with.
+        await env.DB.exec(
+            'INSERT INTO seasons (id, show_id, number, subtitle, url, episode_count, created_at) VALUES ' +
+                "(1, 1, 1, 'Opening Act', 'https://example.com/show-one/1', 13, '2026-01-01T00:00:00.000Z'), " +
+                "(45, 1, 45, '', '', 13, '2026-01-01T00:00:00.000Z'), " +
+                "(46, 1, 46, '', '', 13, '2026-01-01T00:00:00.000Z')",
         );
     });
 
@@ -339,6 +353,25 @@ describe('feed routes', () => {
             const res = await req('GET', '/api/feed', { email: 'bob@example.com' });
             const data = await res.json();
             expect(Number.isNaN(Date.parse(data.now))).toBe(false);
+        });
+
+        it('names the show and season number on each event', async () => {
+            await addPost({
+                user: 'user-bob',
+                email: 'bob@example.com',
+                season: 1,
+                episode: 2,
+                at: ago(60 * 1000),
+            });
+            const body = await (
+                await req('GET', '/api/feed', { email: 'alice@example.com' })
+            ).json();
+            expect(body.events[0]).toMatchObject({
+                season_id: 1,
+                show_name: 'Show One',
+                season_number: 1,
+                episode: 2,
+            });
         });
     });
 

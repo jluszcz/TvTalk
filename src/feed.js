@@ -54,6 +54,8 @@ export function groupNotes(rows) {
             author_email: row.author_email,
             user_id: row.user_id,
             season_id: row.season_id,
+            show_name: row.show_name,
+            season_number: row.season_number,
             episode: row.episode,
             at: row.created_at,
         };

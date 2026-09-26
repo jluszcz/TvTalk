@@ -577,6 +577,10 @@ tr.flash td {
     white-space: nowrap;
 }
 
+.edit-season-btn {
+    margin-left: auto;
+}
+
 /* A pill rather than loose text: at 0.75rem beside a 1rem season number, the
    count read as the lightest thing in the row and the two sides of the row did
    not balance. The chrome supplies the mass the type deliberately does not, so

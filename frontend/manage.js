@@ -168,3 +168,111 @@ export function AddSeasonForm({ shows, seasons, defaultShowId, onDone, onChanged
         </form>
     `;
 }
+
+// Edits a season and its show together, since the season view is the one place
+// both are on screen. Sends only what changed, show first: a rename that 409s
+// then leaves the season untouched rather than half-saved.
+export function EditSeasonForm({ season, onSaved, onCancel }) {
+    const [showName, setShowName] = useState(season.show.name);
+    const [showUrl, setShowUrl] = useState(season.show.url);
+    const [subtitle, setSubtitle] = useState(season.subtitle);
+    const [url, setUrl] = useState(season.url);
+    const [episodeCount, setEpisodeCount] = useState(String(season.episode_count));
+    const [error, setError] = useState(null);
+    const { busy, run, canCancel } = useSubmitGuard();
+
+    const submit = (e) => {
+        e.preventDefault();
+        run(episodeCount, async () => {
+            setError(null);
+            const showChanges = {};
+            if (showName.trim() !== season.show.name) showChanges.name = showName;
+            if (showUrl.trim() !== season.show.url) showChanges.url = showUrl;
+            const seasonChanges = {};
+            if (subtitle.trim() !== season.subtitle) seasonChanges.subtitle = subtitle;
+            if (url.trim() !== season.url) seasonChanges.url = url;
+            if (Number(episodeCount) !== season.episode_count) {
+                seasonChanges.episode_count = Number(episodeCount);
+            }
+            try {
+                if (Object.keys(showChanges).length) {
+                    await api(`/api/shows/${season.show.id}`, jsonRequest('PATCH', showChanges));
+                }
+                if (Object.keys(seasonChanges).length) {
+                    await api(`/api/seasons/${season.id}`, jsonRequest('PATCH', seasonChanges));
+                }
+                await onSaved();
+            } catch (err) {
+                setError(err.message);
+            }
+        });
+    };
+
+    return html`
+        <form class="manage-form" onSubmit=${submit}>
+            <h3 class="manage-title">Edit season</h3>
+            ${error && html`<div class="error">${error}</div>`}
+            <label class="manage-field">
+                <span>Show name</span>
+                <input
+                    required
+                    maxlength="100"
+                    value=${showName}
+                    onInput=${(e) => setShowName(e.target.value)}
+                />
+            </label>
+            <label class="manage-field">
+                <span>Show link</span>
+                <input
+                    type="url"
+                    maxlength="500"
+                    value=${showUrl}
+                    onInput=${(e) => setShowUrl(e.target.value)}
+                />
+            </label>
+            <div class="manage-row">
+                <label class="manage-field">
+                    <span>Subtitle</span>
+                    <input
+                        maxlength="100"
+                        value=${subtitle}
+                        onInput=${(e) => setSubtitle(e.target.value)}
+                    />
+                </label>
+                <label class="manage-field">
+                    <span>Episodes</span>
+                    <input
+                        type="number"
+                        required
+                        min="1"
+                        max="50"
+                        value=${episodeCount}
+                        onInput=${(e) => setEpisodeCount(e.target.value)}
+                    />
+                </label>
+            </div>
+            <label class="manage-field">
+                <span>Season link</span>
+                <input
+                    type="url"
+                    maxlength="500"
+                    value=${url}
+                    onInput=${(e) => setUrl(e.target.value)}
+                />
+            </label>
+            <div class="manage-actions">
+                <button type="submit" class="sort-btn active" disabled=${busy}>
+                    ${busy ? 'Saving…' : 'Save'}
+                </button>
+                <button
+                    type="button"
+                    class="sort-btn"
+                    disabled=${busy}
+                    onClick=${() => canCancel() && onCancel()}
+                >
+                    Cancel
+                </button>
+            </div>
+        </form>
+    `;
+}

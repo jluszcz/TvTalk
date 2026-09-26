@@ -21,6 +21,7 @@ import { sessionOffsetSecs, MAX_OFFSET_ADJUST_SECS } from '../shared/session.js'
 import { PostList } from './post.js';
 import { prefersReducedMotion } from './board.js';
 import { Icon } from './icons.js';
+import { EditSeasonForm } from './manage.js';
 
 const html = htm.bind(h);
 
@@ -32,6 +33,8 @@ export function SeasonView({ seasonId, routeEpisode }) {
     // per-board so opening one closes the rest: the boards are a tall stack, and
     // leaving them all open buries the one you just opened.
     const [openEpisode, setOpenEpisode] = useState(null);
+    // Whether the edit-season form is showing in place of the Edit button.
+    const [editing, setEditing] = useState(false);
 
     // A feed line links straight at an episode, so the route can name one. An
     // effect rather than a useState seed because SeasonView is keyed on the
@@ -263,7 +266,33 @@ export function SeasonView({ seasonId, routeEpisode }) {
                         >${linkLabel(data.season.url || data.season.show.url)}</a
                     >`
                 }
+                ${
+                    data.me &&
+                    !editing &&
+                    html`<button class="sort-btn edit-season-btn" onClick=${() => setEditing(true)}>
+                        Edit
+                    </button>`
+                }
             </div>
+            ${
+                editing &&
+                html`<${EditSeasonForm}
+                    season=${data.season}
+                    onSaved=${async () => {
+                        // Through the guard, like every other mutation here, so an
+                        // in-flight focus refresh can't overwrite the saved values
+                        // with a response from before the save.
+                        beginMutation();
+                        try {
+                            await refresh();
+                        } finally {
+                            endMutation();
+                        }
+                        setEditing(false);
+                    }}
+                    onCancel=${() => setEditing(false)}
+                />`
+            }
             ${
                 !data.me &&
                 html`<div class="notice">

@@ -1,14 +1,23 @@
-// Display label for a season row: "Season 20: Heroes vs. Villains", or just
-// "Season 41" when the season has no subtitle.
-export function seasonLabel(season) {
-    return season.subtitle ? `Season ${season.id}: ${season.subtitle}` : `Season ${season.id}`;
+// Display label for a season: "Lanterns Season 1", with ": Subtitle" when there
+// is one. `show` is optional so a caller holding only the season still gets a
+// usable label.
+export function seasonLabel(season, show) {
+    const base = show?.name ? `${show.name} Season ${season.number}` : `Season ${season.number}`;
+    return season.subtitle ? `${base}: ${season.subtitle}` : base;
 }
 
-// The same label split for layouts that put the number and the subtitle on
-// separate lines. `subtitle` is '' when the season has none, so callers can
-// test it directly rather than checking the season object again.
-export function seasonParts(season) {
-    return { number: `Season ${season.id}`, subtitle: season.subtitle ?? '' };
+// The same label split for the board's two-line cell. Fields are '' when absent
+// so callers can test them directly.
+export function seasonParts(season, show) {
+    return {
+        show: show?.name ?? '',
+        number: `Season ${season.number}`,
+        subtitle: season.subtitle ?? '',
+    };
+}
+
+export function showMap(shows) {
+    return new Map(shows.map((s) => [s.id, s]));
 }
 
 // A column header collapsed to initials: "Bob & Carol" becomes "B & C". Only a
@@ -53,36 +62,60 @@ export function isFullyWatched(season, userCount) {
     return userCount > 0 && season.watched_by.length >= userCount;
 }
 
-// Fully-watched seasons sink to the bottom; everything else keeps natural season
-// order (by number). Stable within each group. Does not mutate the input.
-export function sortSeasons(seasons, userCount) {
+// Show name, case-insensitively, then season number. Seasons whose show is
+// missing from `shows` sort as an empty name — first — rather than throwing.
+function byShowThenNumber(shows) {
+    const names = showMap(shows);
+    return (a, b) => {
+        const byName = (names.get(a.show_id)?.name ?? '').localeCompare(
+            names.get(b.show_id)?.name ?? '',
+            undefined,
+            { sensitivity: 'base' },
+        );
+        return byName || a.number - b.number;
+    };
+}
+
+// Fully watched seasons sink to the bottom; everything else is by show then
+// number. Does not mutate the input.
+export function sortSeasons(seasons, userCount, shows) {
+    const natural = byShowThenNumber(shows);
     return [...seasons].sort((a, b) => {
         const aw = isFullyWatched(a, userCount) ? 1 : 0;
         const bw = isFullyWatched(b, userCount) ? 1 : 0;
-        if (aw !== bw) return aw - bw;
-        return a.id - b.id;
+        return aw - bw || natural(a, b);
     });
 }
 
-// Fully-watched seasons sink to the bottom (matching sortSeasons). Within each
-// tier, sorts by watcher count ascending (fewest seen first), then by season
-// number for stability. Does not mutate the input.
-export function sortBySeenCount(seasons, userCount) {
+// As sortSeasons, but within each tier fewest watchers first. Does not mutate
+// the input.
+export function sortBySeenCount(seasons, userCount, shows) {
+    const natural = byShowThenNumber(shows);
     return [...seasons].sort((a, b) => {
         const aw = isFullyWatched(a, userCount) ? 1 : 0;
         const bw = isFullyWatched(b, userCount) ? 1 : 0;
-        if (aw !== bw) return aw - bw;
-        if (a.watched_by.length !== b.watched_by.length)
-            return a.watched_by.length - b.watched_by.length;
-        return a.id - b.id;
+        return aw - bw || a.watched_by.length - b.watched_by.length || natural(a, b);
     });
 }
 
-// The seasons you can pick as "currently watching": the ones you haven't watched
-// yet. This enforces the invariant that your currently-watching season is always
-// one of your unwatched seasons. Does not mutate the input.
-export function selectableSeasons(seasons, meId) {
-    return seasons.filter((s) => !s.watched_by.includes(meId));
+// null means every show.
+export function filterByShow(seasons, showId) {
+    return showId == null ? seasons : seasons.filter((s) => s.show_id === showId);
+}
+
+// A saved filter comes back from localStorage as a string, or not at all, and
+// may name a show that has since been renamed away or never synced to this
+// browser. Anything that isn't a current show's id is "all shows".
+export function resolveShowFilter(saved, shows) {
+    if (typeof saved !== 'string' || !/^[1-9]\d*$/.test(saved)) return null;
+    const id = Number(saved);
+    return shows.some((s) => s.id === id) ? id : null;
+}
+
+// The seasons of one show you can pick as currently watching: the ones your
+// column hasn't watched. Does not mutate the input.
+export function selectableSeasons(seasons, meId, showId) {
+    return seasons.filter((s) => s.show_id === showId && !s.watched_by.includes(meId));
 }
 
 // watched_by with the user present (watched) or absent — never duplicated:
@@ -93,11 +126,17 @@ export function setWatched(watchedBy, userId, watched) {
     return watched ? [...without, userId] : without;
 }
 
-// Whether checking a season would also clear it as your currently-watching
-// season: true only when you're marking it watched and it's the one you're on.
-// (You can't be mid-watch on a season you've just finished.)
-export function clearsCurrentlyWatching(me, seasonId, checked) {
-    return checked && me?.currently_watching_season_id === seasonId;
+// Whether checking a season also clears it as your pick for its show. The
+// server does the same, and this lets the board show it before the reply.
+export function clearsCurrentlyWatching(me, season, checked) {
+    return checked && me?.currently_watching?.[season.show_id] === season.id;
+}
+
+// What the add form prefills: one past the show's highest season, or 1.
+export function nextSeasonNumber(seasons, showId) {
+    return (
+        seasons.reduce((max, s) => (s.show_id === showId ? Math.max(max, s.number) : max), 0) + 1
+    );
 }
 
 // The episode numbers of a season, 1..count.
@@ -349,12 +388,24 @@ export function relativeTime(iso, nowMs) {
     return `${days} day${days === 1 ? '' : 's'} ago`;
 }
 
-// One feed event as a sentence. Deliberately carries no note count — "Alice
-// commented on Season 45 Episode 3" already implies one or more, and two notes
-// and five notes both mean the same thing to whoever is reading it. The season
-// subtitle is left out too: seasonLabel's full form is wider than the panel.
+// One feed event as a sentence. No note count and no subtitle: the panel is
+// narrow, and two notes and five notes both mean "go read the episode".
 export function feedLine(event) {
-    return `${event.author_name} commented on Season ${event.season_id} Episode ${event.episode}`;
+    return `${event.author_name} commented on ${event.show_name} Season ${event.season_number} Episode ${event.episode}`;
+}
+
+// Text for an external link. Most links will be Wikipedia, and naming it tells
+// you what you'll land on; anything else gets a neutral label.
+export function linkLabel(url) {
+    return /(^|\.)wikipedia\.org$/i.test(safeHostname(url)) ? 'Wikipedia ↗' : 'Link ↗';
+}
+
+function safeHostname(url) {
+    try {
+        return new URL(url).hostname;
+    } catch {
+        return '';
+    }
 }
 
 // The app's whole routing table. Extracted from useHashRoute so the regex is

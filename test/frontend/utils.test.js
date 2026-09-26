@@ -21,25 +21,35 @@ import {
     parseHashRoute,
     shouldScrollToEpisode,
     skipLabel,
+    filterByShow,
+    resolveShowFilter,
+    nextSeasonNumber,
+    linkLabel,
 } from '../../frontend/utils.js';
 
 // ---------------------------------------------------------------------------
 // seasonLabel
 // ---------------------------------------------------------------------------
 
+const shows = [
+    { id: 1, name: 'Lanterns', url: '' },
+    { id: 2, name: 'The Great British Bake Off', url: '' },
+    { id: 3, name: 'andor', url: '' },
+];
+
 describe('seasonLabel', () => {
-    it('includes the subtitle when present', () => {
-        expect(seasonLabel({ id: 20, subtitle: 'Heroes vs. Villains' })).toBe(
-            'Season 20: Heroes vs. Villains',
+    it('names the show, the season, and the subtitle', () => {
+        expect(seasonLabel({ number: 2, subtitle: 'Return' }, shows[0])).toBe(
+            'Lanterns Season 2: Return',
         );
     });
-
-    it('omits the colon when there is no subtitle', () => {
-        expect(seasonLabel({ id: 41, subtitle: '' })).toBe('Season 41');
+    it('omits an empty subtitle', () => {
+        expect(seasonLabel({ number: 14, subtitle: '' }, shows[1])).toBe(
+            'The Great British Bake Off Season 14',
+        );
     });
-
-    it('formats season 1', () => {
-        expect(seasonLabel({ id: 1, subtitle: 'Borneo' })).toBe('Season 1: Borneo');
+    it('falls back to the bare season when the show is unknown', () => {
+        expect(seasonLabel({ number: 3, subtitle: '' }, undefined)).toBe('Season 3');
     });
 });
 
@@ -48,22 +58,19 @@ describe('seasonLabel', () => {
 // ---------------------------------------------------------------------------
 
 describe('seasonParts', () => {
-    it('splits the number from the subtitle', () => {
-        expect(seasonParts({ id: 20, subtitle: 'Heroes vs. Villains' })).toEqual({
-            number: 'Season 20',
-            subtitle: 'Heroes vs. Villains',
+    it('splits show, number, and subtitle', () => {
+        expect(seasonParts({ number: 1, subtitle: 'X' }, shows[0])).toEqual({
+            show: 'Lanterns',
+            number: 'Season 1',
+            subtitle: 'X',
         });
     });
-
-    it('returns an empty subtitle when the season has none', () => {
-        expect(seasonParts({ id: 41, subtitle: '' })).toEqual({
-            number: 'Season 41',
+    it('uses empty strings for a missing show or subtitle', () => {
+        expect(seasonParts({ number: 1 }, undefined)).toEqual({
+            show: '',
+            number: 'Season 1',
             subtitle: '',
         });
-    });
-
-    it('returns an empty subtitle when the field is absent', () => {
-        expect(seasonParts({ id: 41 })).toEqual({ number: 'Season 41', subtitle: '' });
     });
 });
 
@@ -158,31 +165,23 @@ describe('isFullyWatched', () => {
 
 describe('sortSeasons', () => {
     const seasons = [
-        { id: 3, subtitle: 'Africa', watched_by: ['a', 'b'] }, // fully watched
-        { id: 1, subtitle: 'Borneo', watched_by: ['a'] }, // partial
-        { id: 2, subtitle: 'Outback', watched_by: [] }, // none
-        { id: 4, subtitle: 'Marquesas', watched_by: ['a', 'b'] }, // fully watched
+        { id: 10, show_id: 2, number: 14, watched_by: [] },
+        { id: 11, show_id: 1, number: 2, watched_by: ['a'] },
+        { id: 12, show_id: 1, number: 1, watched_by: ['a', 'b'] }, // fully watched
+        { id: 13, show_id: 3, number: 1, watched_by: [] },
+        { id: 14, show_id: 2, number: 3, watched_by: [] },
     ];
 
+    it('orders by show name case-insensitively, then number, sinking fully watched', () => {
+        expect(sortSeasons(seasons, 2, shows).map((s) => s.id)).toEqual([13, 11, 14, 10, 12]);
+    });
     it('does not mutate the input', () => {
         const copy = [...seasons];
-        sortSeasons(seasons, 2);
+        sortSeasons(seasons, 2, shows);
         expect(seasons).toEqual(copy);
     });
-
-    it('sinks fully-watched seasons to the bottom, keeping number order within groups', () => {
-        const out = sortSeasons(seasons, 2).map((s) => s.id);
-        expect(out).toEqual([1, 2, 3, 4]);
-    });
-
-    it('orders purely by season number when none are fully watched', () => {
-        const out = sortSeasons(seasons, 3).map((s) => s.id);
-        expect(out).toEqual([1, 2, 3, 4]);
-    });
-
-    it('keeps natural order when there are no users (nothing sinks)', () => {
-        const out = sortSeasons(seasons, 0).map((s) => s.id);
-        expect(out).toEqual([1, 2, 3, 4]);
+    it('sinks nothing when there are no users', () => {
+        expect(sortSeasons(seasons, 0, shows).map((s) => s.id)).toEqual([13, 12, 11, 14, 10]);
     });
 });
 
@@ -192,36 +191,43 @@ describe('sortSeasons', () => {
 
 describe('sortBySeenCount', () => {
     const seasons = [
-        { id: 3, subtitle: 'Africa', watched_by: ['a', 'b'] }, // fully watched (2/2)
-        { id: 1, subtitle: 'Borneo', watched_by: ['a'] }, // partial
-        { id: 2, subtitle: 'Outback', watched_by: [] }, // none
-        { id: 4, subtitle: 'Marquesas', watched_by: ['a', 'b'] }, // fully watched (2/2)
+        { id: 10, show_id: 2, number: 14, watched_by: ['a'] },
+        { id: 11, show_id: 1, number: 2, watched_by: ['a'] },
+        { id: 12, show_id: 1, number: 1, watched_by: ['a', 'b'] }, // fully watched
+        { id: 13, show_id: 3, number: 1, watched_by: [] },
     ];
-
-    it('does not mutate the input', () => {
-        const copy = [...seasons];
-        sortBySeenCount(seasons, 2);
-        expect(seasons).toEqual(copy);
+    it('orders by watcher count, then show, then number, sinking fully watched', () => {
+        expect(sortBySeenCount(seasons, 2, shows).map((s) => s.id)).toEqual([13, 11, 10, 12]);
     });
+});
 
-    it('sinks fully-watched seasons to the bottom, then sorts by watcher count ascending', () => {
-        const out = sortBySeenCount(seasons, 2).map((s) => s.id);
-        expect(out).toEqual([2, 1, 3, 4]);
+// ---------------------------------------------------------------------------
+// filterByShow
+// ---------------------------------------------------------------------------
+
+describe('filterByShow', () => {
+    const seasons = [
+        { id: 1, show_id: 1 },
+        { id: 2, show_id: 2 },
+    ];
+    it('returns everything for null', () => {
+        expect(filterByShow(seasons, null)).toBe(seasons);
     });
-
-    it('seasons with equal watcher counts are ordered by season number', () => {
-        const tied = [
-            { id: 5, watched_by: ['a'] },
-            { id: 2, watched_by: ['a'] },
-            { id: 8, watched_by: [] },
-        ];
-        const out = sortBySeenCount(tied, 2).map((s) => s.id);
-        expect(out).toEqual([8, 2, 5]);
+    it("keeps only that show's seasons", () => {
+        expect(filterByShow(seasons, 2).map((s) => s.id)).toEqual([2]);
     });
+});
 
-    it('keeps natural order when there are no users (nothing sinks)', () => {
-        const out = sortBySeenCount(seasons, 0).map((s) => s.id);
-        expect(out).toEqual([2, 1, 3, 4]);
+// ---------------------------------------------------------------------------
+// resolveShowFilter
+// ---------------------------------------------------------------------------
+
+describe('resolveShowFilter', () => {
+    it('accepts a saved id of an existing show, as a string', () => {
+        expect(resolveShowFilter('2', shows)).toBe(2);
+    });
+    it.each([null, undefined, '', 'abc', '99', '1.5'])('falls back to all for %j', (saved) => {
+        expect(resolveShowFilter(saved, shows)).toBe(null);
     });
 });
 
@@ -231,26 +237,12 @@ describe('sortBySeenCount', () => {
 
 describe('selectableSeasons', () => {
     const seasons = [
-        { id: 1, watched_by: ['me'] }, // watched by me
-        { id: 2, watched_by: ['other'] }, // watched by someone else
-        { id: 3, watched_by: [] }, // unwatched
-        { id: 4, watched_by: ['me', 'other'] }, // watched by me (and others)
+        { id: 1, show_id: 1, watched_by: ['me'] },
+        { id: 2, show_id: 1, watched_by: ['other'] },
+        { id: 3, show_id: 2, watched_by: [] },
     ];
-
-    it('excludes seasons the user has already watched', () => {
-        const out = selectableSeasons(seasons, 'me').map((s) => s.id);
-        expect(out).toEqual([2, 3]);
-    });
-
-    it('returns every season when the user has watched none', () => {
-        const out = selectableSeasons(seasons, 'nobody').map((s) => s.id);
-        expect(out).toEqual([1, 2, 3, 4]);
-    });
-
-    it('does not mutate the input', () => {
-        const copy = [...seasons];
-        selectableSeasons(seasons, 'me');
-        expect(seasons).toEqual(copy);
+    it("offers only this show's seasons the user hasn't watched", () => {
+        expect(selectableSeasons(seasons, 'me', 1).map((s) => s.id)).toEqual([2]);
     });
 });
 
@@ -287,28 +279,18 @@ describe('setWatched', () => {
 // ---------------------------------------------------------------------------
 
 describe('clearsCurrentlyWatching', () => {
-    const me = { id: 'me', currently_watching_season_id: 7 };
-
-    it('is true when checking the season you are currently watching', () => {
-        expect(clearsCurrentlyWatching(me, 7, true)).toBe(true);
+    const me = { id: 'me', currently_watching: { 1: 7, 2: 9 } };
+    it("is true when checking the season that is this show's pick", () => {
+        expect(clearsCurrentlyWatching(me, { id: 7, show_id: 1 }, true)).toBe(true);
     });
-
-    it('is false when unchecking that same season', () => {
-        expect(clearsCurrentlyWatching(me, 7, false)).toBe(false);
+    it('is false when unchecking', () => {
+        expect(clearsCurrentlyWatching(me, { id: 7, show_id: 1 }, false)).toBe(false);
     });
-
-    it('is false when checking a different season', () => {
-        expect(clearsCurrentlyWatching(me, 3, true)).toBe(false);
+    it("is false for a season that is not the show's pick", () => {
+        expect(clearsCurrentlyWatching(me, { id: 8, show_id: 1 }, true)).toBe(false);
     });
-
-    it('is false when you have no currently-watching season', () => {
-        expect(
-            clearsCurrentlyWatching({ id: 'me', currently_watching_season_id: null }, 7, true),
-        ).toBe(false);
-    });
-
-    it('is false when the user is missing', () => {
-        expect(clearsCurrentlyWatching(undefined, 7, true)).toBe(false);
+    it('is false with no me', () => {
+        expect(clearsCurrentlyWatching(undefined, { id: 7, show_id: 1 }, true)).toBe(false);
     });
 });
 
@@ -519,21 +501,45 @@ describe('relativeTime', () => {
 });
 
 // ---------------------------------------------------------------------------
+// nextSeasonNumber
+// ---------------------------------------------------------------------------
+
+describe('nextSeasonNumber', () => {
+    const seasons = [
+        { show_id: 1, number: 1 },
+        { show_id: 1, number: 4 },
+        { show_id: 2, number: 14 },
+    ];
+    it("is one past the show's highest", () => {
+        expect(nextSeasonNumber(seasons, 1)).toBe(5);
+    });
+    it('is 1 for a show with no seasons', () => {
+        expect(nextSeasonNumber(seasons, 3)).toBe(1);
+    });
+});
+
+// ---------------------------------------------------------------------------
 // feedLine
 // ---------------------------------------------------------------------------
 
 describe('feedLine', () => {
-    it('names the person, the season, and the episode', () => {
-        expect(feedLine({ author_name: 'Alice', season_id: 45, episode: 3 })).toBe(
-            'Alice commented on Season 45 Episode 3',
-        );
+    it('names the show, season number, and episode', () => {
+        expect(
+            feedLine({ author_name: 'Carol', show_name: 'Lanterns', season_number: 1, episode: 3 }),
+        ).toBe('Carol commented on Lanterns Season 1 Episode 3');
     });
+});
 
-    // No count, however many notes the group holds: two and five both mean go
-    // read the episode.
-    it('says the same thing however many notes are behind it', () => {
-        const one = feedLine({ author_name: 'Bob', season_id: 46, episode: 1 });
-        expect(one).toBe('Bob commented on Season 46 Episode 1');
+// ---------------------------------------------------------------------------
+// linkLabel
+// ---------------------------------------------------------------------------
+
+describe('linkLabel', () => {
+    it('names Wikipedia', () => {
+        expect(linkLabel('https://en.wikipedia.org/wiki/Lanterns_(TV_series)')).toBe('Wikipedia ↗');
+    });
+    it('is generic for anything else', () => {
+        expect(linkLabel('https://example.com')).toBe('Link ↗');
     });
 });
 

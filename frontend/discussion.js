@@ -234,6 +234,20 @@ export function SeasonView({ seasonId, routeEpisode }) {
             }),
         );
 
+    // Through the guard, like every other mutation here, so an in-flight focus
+    // refresh can't overwrite values EditSeasonForm just saved with a response
+    // fetched before the save. Shared by onSaved and onChanged below: onSaved
+    // also closes the form, onChanged doesn't, since a show-saved/season-failed
+    // result needs the header updated without losing the form's typed values.
+    const refreshAfterEdit = async () => {
+        beginMutation();
+        try {
+            await refresh();
+        } finally {
+            endMutation();
+        }
+    };
+
     if (loading) return html`<div class="loading">Loading…</div>`;
     // Only a failure with nothing to show yet (the initial load) gets the view to
     // itself. Once there is data, an error is a banner *above* it, the way the
@@ -279,17 +293,10 @@ export function SeasonView({ seasonId, routeEpisode }) {
                 html`<${EditSeasonForm}
                     season=${data.season}
                     onSaved=${async () => {
-                        // Through the guard, like every other mutation here, so an
-                        // in-flight focus refresh can't overwrite the saved values
-                        // with a response from before the save.
-                        beginMutation();
-                        try {
-                            await refresh();
-                        } finally {
-                            endMutation();
-                        }
+                        await refreshAfterEdit();
                         setEditing(false);
                     }}
+                    onChanged=${refreshAfterEdit}
                     onCancel=${() => setEditing(false)}
                 />`
             }

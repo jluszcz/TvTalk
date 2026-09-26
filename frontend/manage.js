@@ -172,7 +172,7 @@ export function AddSeasonForm({ shows, seasons, defaultShowId, onDone, onChanged
 // Edits a season and its show together, since the season view is the one place
 // both are on screen. Sends only what changed, show first: a rename that 409s
 // then leaves the season untouched rather than half-saved.
-export function EditSeasonForm({ season, onSaved, onCancel }) {
+export function EditSeasonForm({ season, onSaved, onChanged, onCancel }) {
     const [showName, setShowName] = useState(season.show.name);
     const [showUrl, setShowUrl] = useState(season.show.url);
     const [subtitle, setSubtitle] = useState(season.subtitle);
@@ -194,16 +194,28 @@ export function EditSeasonForm({ season, onSaved, onCancel }) {
             if (Number(episodeCount) !== season.episode_count) {
                 seasonChanges.episode_count = Number(episodeCount);
             }
+            // Tracked separately from seasonChanges failing: the show PATCH can
+            // land and then the season PATCH 409 (e.g. the episode-count
+            // shrink guard), which needs both a different error message and a
+            // refresh — the header is still showing the pre-save show name
+            // until one happens — while the form itself stays open.
+            let showSaved = false;
             try {
                 if (Object.keys(showChanges).length) {
                     await api(`/api/shows/${season.show.id}`, jsonRequest('PATCH', showChanges));
+                    showSaved = true;
                 }
                 if (Object.keys(seasonChanges).length) {
                     await api(`/api/seasons/${season.id}`, jsonRequest('PATCH', seasonChanges));
                 }
                 await onSaved();
             } catch (err) {
-                setError(err.message);
+                if (showSaved) {
+                    setError(`Saved the show, but not the season: ${err.message}`);
+                    await onChanged();
+                } else {
+                    setError(err.message);
+                }
             }
         });
     };

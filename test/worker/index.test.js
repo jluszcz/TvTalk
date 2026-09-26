@@ -677,3 +677,279 @@ describe('DELETE /api/watched/:season_id', () => {
         expect(r.status).toBe(400);
     });
 });
+
+// ---------------------------------------------------------------------------
+// Shows and seasons
+// ---------------------------------------------------------------------------
+
+describe('POST /api/shows', () => {
+    it('creates a show, trimming the name', async () => {
+        const res = await req('POST', '/api/shows', {
+            body: { name: '  Taskmaster ', url: 'https://example.com/taskmaster' },
+            email: 'alice@example.com',
+        });
+        expect(res.status).toBe(201);
+        const { show } = await res.json();
+        expect(show).toMatchObject({ name: 'Taskmaster', url: 'https://example.com/taskmaster' });
+        const board = await (await req('GET', '/api/board')).json();
+        expect(board.shows.map((s) => s.name)).toContain('Taskmaster');
+    });
+
+    it('defaults url to empty', async () => {
+        const res = await req('POST', '/api/shows', {
+            body: { name: 'Taskmaster' },
+            email: 'alice@example.com',
+        });
+        expect((await res.json()).show.url).toBe('');
+    });
+
+    it('returns 409 for a name that differs only in case', async () => {
+        const res = await req('POST', '/api/shows', {
+            body: { name: 'show one' },
+            email: 'alice@example.com',
+        });
+        expect(res.status).toBe(409);
+        expect((await res.json()).error).toMatch(/already exists/);
+    });
+
+    it.each([
+        [{ name: '' }, /name/],
+        [{ name: '   ' }, /name/],
+        [{ name: 'x'.repeat(101) }, /name/],
+        [{ name: 'Ok', url: 'javascript:alert(1)' }, /url/],
+        [{ name: 'Ok', url: 'ftp://example.com' }, /url/],
+        [{ name: 'Ok', url: `https://example.com/${'x'.repeat(500)}` }, /url/],
+    ])('returns 400 for %j', async (body, message) => {
+        const res = await req('POST', '/api/shows', { body, email: 'alice@example.com' });
+        expect(res.status).toBe(400);
+        expect((await res.json()).error).toMatch(message);
+    });
+
+    it('returns 403 for a caller off the roster', async () => {
+        const res = await req('POST', '/api/shows', { body: { name: 'Taskmaster' } });
+        expect(res.status).toBe(403);
+    });
+});
+
+describe('PATCH /api/shows/:show_id', () => {
+    it('renames a show and changes its link', async () => {
+        const res = await req('PATCH', '/api/shows/1', {
+            body: { name: 'Show Uno', url: '' },
+            email: 'bob@example.com',
+        });
+        expect(res.status).toBe(200);
+        expect((await res.json()).show).toEqual({ id: 1, name: 'Show Uno', url: '' });
+    });
+
+    it('allows a change of case to its own name', async () => {
+        const res = await req('PATCH', '/api/shows/1', {
+            body: { name: 'SHOW ONE' },
+            email: 'bob@example.com',
+        });
+        expect(res.status).toBe(200);
+    });
+
+    it("returns 409 when renaming onto another show's name, in any case", async () => {
+        const res = await req('PATCH', '/api/shows/1', {
+            body: { name: 'another show' },
+            email: 'bob@example.com',
+        });
+        expect(res.status).toBe(409);
+    });
+
+    it('returns 400 for an empty body', async () => {
+        const res = await req('PATCH', '/api/shows/1', { body: {}, email: 'bob@example.com' });
+        expect(res.status).toBe(400);
+    });
+
+    it('returns 404 for an unknown show', async () => {
+        const res = await req('PATCH', '/api/shows/999', {
+            body: { name: 'X' },
+            email: 'bob@example.com',
+        });
+        expect(res.status).toBe(404);
+    });
+
+    it('returns 403 for a caller off the roster', async () => {
+        const res = await req('PATCH', '/api/shows/1', { body: { name: 'X' } });
+        expect(res.status).toBe(403);
+    });
+});
+
+describe('POST /api/shows/:show_id/seasons', () => {
+    it('adds a season to a show', async () => {
+        const res = await req('POST', '/api/shows/1/seasons', {
+            body: { number: 2, episode_count: 6, subtitle: ' Second ', url: '' },
+            email: 'alice@example.com',
+        });
+        expect(res.status).toBe(201);
+        const { season } = await res.json();
+        expect(season).toMatchObject({
+            show_id: 1,
+            number: 2,
+            subtitle: 'Second',
+            url: '',
+            episode_count: 6,
+        });
+        const board = await (await req('GET', '/api/board')).json();
+        expect(board.seasons.find((s) => s.id === season.id)).toMatchObject({
+            post_count: 0,
+            watched_by: [],
+        });
+    });
+
+    it('allows the same number under a different show', async () => {
+        const res = await req('POST', '/api/shows/2/seasons', {
+            body: { number: 1, episode_count: 6 },
+            email: 'alice@example.com',
+        });
+        expect(res.status).toBe(201);
+    });
+
+    it('returns 409 for a number the show already has', async () => {
+        const res = await req('POST', '/api/shows/1/seasons', {
+            body: { number: 1, episode_count: 6 },
+            email: 'alice@example.com',
+        });
+        expect(res.status).toBe(409);
+        expect((await res.json()).error).toMatch(/already has Season 1/);
+    });
+
+    it.each([
+        [{ number: 0, episode_count: 6 }, /number/],
+        [{ number: 1000, episode_count: 6 }, /number/],
+        [{ number: 1.5, episode_count: 6 }, /number/],
+        [{ number: 3, episode_count: 0 }, /episode_count/],
+        [{ number: 3, episode_count: 51 }, /episode_count/],
+        [{ number: 3 }, /episode_count/],
+        [{ number: 3, episode_count: 6, subtitle: 'x'.repeat(101) }, /subtitle/],
+        [{ number: 3, episode_count: 6, url: 'javascript:alert(1)' }, /url/],
+    ])('returns 400 for %j', async (body, message) => {
+        const res = await req('POST', '/api/shows/1/seasons', {
+            body,
+            email: 'alice@example.com',
+        });
+        expect(res.status).toBe(400);
+        expect((await res.json()).error).toMatch(message);
+    });
+
+    it('returns 404 for an unknown show', async () => {
+        const res = await req('POST', '/api/shows/999/seasons', {
+            body: { number: 1, episode_count: 6 },
+            email: 'alice@example.com',
+        });
+        expect(res.status).toBe(404);
+    });
+
+    it('returns 403 for a caller off the roster', async () => {
+        const res = await req('POST', '/api/shows/1/seasons', {
+            body: { number: 2, episode_count: 6 },
+        });
+        expect(res.status).toBe(403);
+    });
+});
+
+describe('PATCH /api/seasons/:season_id', () => {
+    const now = '2026-01-02T00:00:00.000Z';
+
+    it('updates subtitle, url, and episode count', async () => {
+        const res = await req('PATCH', '/api/seasons/1', {
+            body: { subtitle: 'New', url: 'https://example.com/new', episode_count: 20 },
+            email: 'alice@example.com',
+        });
+        expect(res.status).toBe(200);
+        expect((await res.json()).season).toMatchObject({
+            id: 1,
+            subtitle: 'New',
+            url: 'https://example.com/new',
+            episode_count: 20,
+        });
+    });
+
+    it('leaves unspecified fields alone', async () => {
+        await req('PATCH', '/api/seasons/1', {
+            body: { episode_count: 12 },
+            email: 'alice@example.com',
+        });
+        const board = await (await req('GET', '/api/board')).json();
+        expect(board.seasons.find((s) => s.id === 1)).toMatchObject({
+            subtitle: 'Opening Act',
+            episode_count: 12,
+        });
+    });
+
+    // One row per table the shrink guard consults; each alone must block.
+    it.each([
+        [
+            'a post',
+            `INSERT INTO posts (season_id, episode, user_id, body, created_at)
+             VALUES (1, 9, 'user-alice', 'hi', '${now}')`,
+        ],
+        [
+            'an episode status',
+            `INSERT INTO episode_statuses (user_id, season_id, episode, status, reason, created_at)
+             VALUES ('user-alice', 1, 9, 'skipping', 'recap', '${now}')`,
+        ],
+        [
+            'a reveal',
+            `INSERT INTO reveals (user_id, season_id, episode, created_at)
+             VALUES ('user-alice', 1, 9, '${now}')`,
+        ],
+        [
+            'a watch session',
+            `INSERT INTO watch_sessions (user_id, season_id, episode, last_activity_at)
+             VALUES ('user-alice', 1, 9, '${now}')`,
+        ],
+        [
+            'a watch offset',
+            `INSERT INTO watch_offsets (user_id, season_id, episode, adjust_secs, updated_at)
+             VALUES ('user-alice', 1, 9, 30, '${now}')`,
+        ],
+    ])('refuses to drop below an episode with %s', async (_label, sql) => {
+        await env.DB.prepare(sql).run();
+        const res = await req('PATCH', '/api/seasons/1', {
+            body: { episode_count: 8 },
+            email: 'alice@example.com',
+        });
+        expect(res.status).toBe(409);
+        expect((await res.json()).error).toMatch(/Episode 9/);
+        const ok = await req('PATCH', '/api/seasons/1', {
+            body: { episode_count: 9 },
+            email: 'alice@example.com',
+        });
+        expect(ok.status).toBe(200);
+    });
+
+    it('ignores activity on other seasons', async () => {
+        await env.DB.prepare(
+            `INSERT INTO reveals (user_id, season_id, episode, created_at)
+             VALUES ('user-alice', 41, 12, '${now}')`,
+        ).run();
+        const res = await req('PATCH', '/api/seasons/1', {
+            body: { episode_count: 3 },
+            email: 'alice@example.com',
+        });
+        expect(res.status).toBe(200);
+    });
+
+    it('rejects changing number or show_id', async () => {
+        const res = await req('PATCH', '/api/seasons/1', {
+            body: { number: 5 },
+            email: 'alice@example.com',
+        });
+        expect(res.status).toBe(400);
+    });
+
+    it('returns 404 for an unknown season', async () => {
+        const res = await req('PATCH', '/api/seasons/999', {
+            body: { subtitle: 'x' },
+            email: 'alice@example.com',
+        });
+        expect(res.status).toBe(404);
+    });
+
+    it('returns 403 for a caller off the roster', async () => {
+        const res = await req('PATCH', '/api/seasons/1', { body: { subtitle: 'x' } });
+        expect(res.status).toBe(403);
+    });
+});

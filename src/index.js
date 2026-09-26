@@ -108,6 +108,66 @@ const reactionUpdate = z.object({
     on: z.boolean({ message: 'on must be true or false' }),
 });
 
+// '' is "no link", which the client tests for directly. Anything else must be
+// http(s): the value becomes an href, and a javascript: URL there would run in
+// every viewer's session.
+const linkUrl = z
+    .string({ message: 'url must be a string' })
+    .trim()
+    .max(500, { message: 'url must be at most 500 characters' })
+    .refine((v) => v === '' || /^https?:\/\/[^\s]+$/i.test(v), {
+        message: 'url must be an http(s) URL',
+    });
+
+const showName = z
+    .string({ message: 'name must be a string' })
+    .trim()
+    .min(1, { message: 'name must not be empty' })
+    .max(100, { message: 'name must be at most 100 characters' });
+
+const seasonSubtitle = z
+    .string({ message: 'subtitle must be a string' })
+    .trim()
+    .max(100, { message: 'subtitle must be at most 100 characters' });
+
+const episodeCount = z
+    .number({ message: 'episode_count must be a whole number from 1 to 50' })
+    .int({ message: 'episode_count must be a whole number from 1 to 50' })
+    .min(1, { message: 'episode_count must be a whole number from 1 to 50' })
+    .max(50, { message: 'episode_count must be a whole number from 1 to 50' });
+
+const nonEmptyPatch = (data) => Object.values(data).some((v) => v !== undefined);
+
+const showCreate = z.object({ name: showName, url: linkUrl.default('') });
+
+const showPatch = z
+    .object({ name: showName.optional(), url: linkUrl.optional() })
+    .strict()
+    .refine(nonEmptyPatch, { message: 'nothing to update' });
+
+const seasonCreate = z.object({
+    number: z
+        .number({ message: 'number must be a whole number from 1 to 999' })
+        .int({ message: 'number must be a whole number from 1 to 999' })
+        .min(1, { message: 'number must be a whole number from 1 to 999' })
+        .max(999, { message: 'number must be a whole number from 1 to 999' }),
+    subtitle: seasonSubtitle.default(''),
+    url: linkUrl.default(''),
+    episode_count: episodeCount,
+});
+
+// .strict() so an attempt to change `number` or `show_id` is a 400 rather than
+// silently ignored: those are the season's identity, and a caller who sent one
+// believes it took effect.
+const seasonPatch = z
+    .object({
+        subtitle: seasonSubtitle.optional(),
+        url: linkUrl.optional(),
+        episode_count: episodeCount.optional(),
+    })
+    .strict()
+    .refine(nonEmptyPatch, { message: 'nothing to update' });
+
 app.onError((err, c) => {
     // An HTTPException is an intentional HTTP error (e.g. Hono's 400 for a
     // body that fails JSON.parse) — keep its status instead of collapsing it
@@ -316,6 +376,139 @@ app.delete('/api/watched/:season_id', async (c) => {
         .run();
 
     return c.json({ success: true, user_id: me.id, season_id: seasonId });
+});
+
+// Positive-integer path id, or null. Shared by the show and season routes below.
+function pathId(c, name) {
+    const id = Number(c.req.param(name));
+    return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+// The highest episode of a season that anything refers to, or 0. Lowering
+// episode_count beneath it would strand those rows on an episode the season
+// no longer has — every episode route 404s on it, so they could never be read
+// or cleaned up from the app.
+const MAX_REFERENCED_EPISODE = `
+    SELECT COALESCE(MAX(episode), 0) FROM (
+        SELECT episode FROM posts            WHERE season_id = ?1
+        UNION ALL SELECT episode FROM episode_statuses WHERE season_id = ?1
+        UNION ALL SELECT episode FROM reveals          WHERE season_id = ?1
+        UNION ALL SELECT episode FROM watch_sessions   WHERE season_id = ?1
+        UNION ALL SELECT episode FROM watch_offsets    WHERE season_id = ?1
+    )`;
+
+app.post('/api/shows', zValidator('json', showCreate, onInvalid), async (c) => {
+    const me = await callerUser(c);
+    if (!me) return c.json({ error: 'Your account is not on the watch list' }, 403);
+
+    const { name, url } = c.req.valid('json');
+    // DO NOTHING + RETURNING yields no row on a duplicate, so the uniqueness
+    // check and the insert are one statement.
+    const show = await c.env.DB.prepare(
+        `INSERT INTO shows (name, url, created_at) VALUES (?, ?, ?)
+         ON CONFLICT (name) DO NOTHING
+         RETURNING id, name, url`,
+    )
+        .bind(name, url, new Date().toISOString())
+        .first();
+    if (!show) return c.json({ error: `A show named "${name}" already exists` }, 409);
+
+    return c.json({ show }, 201);
+});
+
+app.patch('/api/shows/:show_id', zValidator('json', showPatch, onInvalid), async (c) => {
+    const me = await callerUser(c);
+    if (!me) return c.json({ error: 'Your account is not on the watch list' }, 403);
+
+    const showId = pathId(c, 'show_id');
+    if (showId === null) return c.json({ error: 'show_id must be a positive integer' }, 400);
+
+    const { name, url } = c.req.valid('json');
+    let show;
+    try {
+        show = await c.env.DB.prepare(
+            `UPDATE shows SET name = COALESCE(?2, name), url = COALESCE(?3, url)
+             WHERE id = ?1
+             RETURNING id, name, url`,
+        )
+            .bind(showId, name ?? null, url ?? null)
+            .first();
+    } catch (err) {
+        if (/UNIQUE/.test(err.message)) {
+            return c.json({ error: `A show named "${name}" already exists` }, 409);
+        }
+        throw err;
+    }
+    if (!show) return c.json({ error: `Unknown show: ${showId}` }, 404);
+
+    return c.json({ show });
+});
+
+app.post('/api/shows/:show_id/seasons', zValidator('json', seasonCreate, onInvalid), async (c) => {
+    const me = await callerUser(c);
+    if (!me) return c.json({ error: 'Your account is not on the watch list' }, 403);
+
+    const showId = pathId(c, 'show_id');
+    if (showId === null) return c.json({ error: 'show_id must be a positive integer' }, 400);
+
+    const show = await c.env.DB.prepare('SELECT id, name FROM shows WHERE id = ?')
+        .bind(showId)
+        .first();
+    if (!show) return c.json({ error: `Unknown show: ${showId}` }, 404);
+
+    const { number, subtitle, url, episode_count } = c.req.valid('json');
+    const season = await c.env.DB.prepare(
+        `INSERT INTO seasons (show_id, number, subtitle, url, episode_count, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT (show_id, number) DO NOTHING
+             RETURNING id, show_id, number, subtitle, url, episode_count`,
+    )
+        .bind(showId, number, subtitle, url, episode_count, new Date().toISOString())
+        .first();
+    if (!season) {
+        return c.json({ error: `${show.name} already has Season ${number}` }, 409);
+    }
+
+    return c.json({ season }, 201);
+});
+
+app.patch('/api/seasons/:season_id', zValidator('json', seasonPatch, onInvalid), async (c) => {
+    const me = await callerUser(c);
+    if (!me) return c.json({ error: 'Your account is not on the watch list' }, 403);
+
+    const seasonId = pathId(c, 'season_id');
+    if (seasonId === null) return c.json({ error: 'season_id must be a positive integer' }, 400);
+
+    const { subtitle, url, episode_count } = c.req.valid('json');
+    // The shrink guard is in the WHERE so a post landing on a high episode
+    // between a check and the write cannot slip past it.
+    const season = await c.env.DB.prepare(
+        `UPDATE seasons
+         SET subtitle = COALESCE(?2, subtitle),
+             url = COALESCE(?3, url),
+             episode_count = COALESCE(?4, episode_count)
+         WHERE id = ?1
+           AND COALESCE(?4, episode_count) >= (${MAX_REFERENCED_EPISODE})
+         RETURNING id, show_id, number, subtitle, url, episode_count`,
+    )
+        .bind(seasonId, subtitle ?? null, url ?? null, episode_count ?? null)
+        .first();
+    if (season) return c.json({ season });
+
+    // No row: the season is missing, or the guard refused. Tell them apart
+    // only now, off the hot path.
+    const exists = await c.env.DB.prepare('SELECT 1 FROM seasons WHERE id = ?')
+        .bind(seasonId)
+        .first();
+    if (!exists) return c.json({ error: `Unknown season: ${seasonId}` }, 404);
+    const max = await c.env.DB.prepare(MAX_REFERENCED_EPISODE).bind(seasonId).raw();
+    const highest = max[0][0];
+    return c.json(
+        {
+            error: `Episode ${highest} already has activity, so this season needs at least ${highest} episodes`,
+        },
+        409,
+    );
 });
 
 // Resolves and validates the :season_id / :episode path pair. Returns either

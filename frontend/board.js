@@ -15,6 +15,7 @@ import {
 } from './utils.js';
 import { Icon } from './icons.js';
 import { FeedBell } from './feed.js';
+import { AddSeasonForm } from './manage.js';
 
 const html = htm.bind(h);
 
@@ -243,12 +244,19 @@ function saveShowFilter(showId) {
     }
 }
 
-// App also passes onRefresh, for the add-show/add-season forms this board does
-// not yet render; it is not destructured here since nothing reads it yet.
-export function Board({ users, shows, seasons, meId, onToggle, onSetCurrentlyWatching }) {
+export function Board({
+    users,
+    shows,
+    seasons,
+    meId,
+    onToggle,
+    onSetCurrentlyWatching,
+    onRefresh,
+}) {
     const [sortMode, setSortMode] = useState('season');
     const [savedFilter, setSavedFilter] = useState(readSavedShowFilter);
     const [flashId, setFlashId] = useState(null);
+    const [adding, setAdding] = useState(false);
     const showId = resolveShowFilter(savedFilter, shows);
     const shownShows = useMemo(
         () => (showId == null ? shows : shows.filter((s) => s.id === showId)),
@@ -337,7 +345,28 @@ export function Board({ users, shows, seasons, meId, onToggle, onSetCurrentlyWat
                         Seen Count
                     </button>
                 </div>
+                ${
+                    meId &&
+                    !adding &&
+                    html`<button class="sort-btn add-season-btn" onClick=${() => setAdding(true)}>
+                        ＋ Add season
+                    </button>`
+                }
             </div>
+            ${
+                adding &&
+                html`<${AddSeasonForm}
+                    shows=${shows}
+                    seasons=${seasons}
+                    defaultShowId=${showId}
+                    onChanged=${onRefresh}
+                    onDone=${() => {
+                        setAdding(false);
+                        onRefresh();
+                    }}
+                    onCancel=${() => setAdding(false)}
+                />`
+            }
             <div class="table-wrapper">
                 <table id="board">
                     <thead>

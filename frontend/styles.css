@@ -205,6 +205,52 @@ body {
     color: #fff;
 }
 
+.manage-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin: 0.75rem 0;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-subtle);
+}
+
+.manage-title {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.manage-row {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.manage-field {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.85rem;
+    color: var(--text-subtle);
+}
+
+.manage-field input,
+.manage-field select {
+    height: var(--control-height);
+    padding: 0 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+}
+
+.manage-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
 .table-wrapper {
     overflow-x: auto;
     overscroll-behavior-x: contain;

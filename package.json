@@ -1,0 +1,56 @@
+{
+    "name": "tvtalk",
+    "version": "1.0.0",
+    "description": "Track which TV seasons a small group has watched, and talk about each episode",
+    "main": "src/index.js",
+    "type": "module",
+    "scripts": {
+        "build": "node build.js",
+        "emoji:generate": "node generate-emoji-data.js",
+        "dev": "concurrently -k -n bundle,worker -c cyan,magenta \"node build.js --watch\" \"wrangler dev\"",
+        "deploy": "npm run build && wrangler deploy",
+        "lint": "eslint .",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "prepare": "husky"
+    },
+    "lint-staged": {
+        "*.{js,css}": "prettier --write"
+    },
+    "author": "Jacob Luszcz",
+    "license": "MIT",
+    "engines": {
+        "node": ">=22"
+    },
+    "overrides": {
+        "undici": "^7.29.0",
+        "picomatch": "^4.0.4",
+        "postcss": "^8.5.23",
+        "brace-expansion": "^5.0.9"
+    },
+    "devDependencies": {
+        "@cloudflare/vitest-pool-workers": "^0.22.0",
+        "@eslint/js": "^10.0.1",
+        "concurrently": "^10.0.5",
+        "esbuild": "^0.28.2",
+        "eslint": "^10.9.1",
+        "globals": "^17.11.0",
+        "husky": "^9.1.7",
+        "lint-staged": "^17.4.1",
+        "prettier": "^3.9.6",
+        "unicode-emoji-json": "^0.9.0",
+        "vitest": "^4.1.11",
+        "wrangler": "^4.75.0"
+    },
+    "dependencies": {
+        "@hono/zod-validator": "^0.9.0",
+        "hono": "^4.13.5",
+        "htm": "^3.1.1",
+        "jose": "^6.2.10",
+        "lucide-preact": "^1.37.0",
+        "preact": "^10.29.8",
+        "zod": "^4.5.2"
+    }
+}

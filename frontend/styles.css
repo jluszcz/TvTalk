@@ -1,0 +1,2383 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+/*
+ * Theme tokens — each light-dark() pair resolves via the active color scheme.
+ * With no data-theme set, `color-scheme: light dark` lets the OS preference
+ * decide; a manual toggle sets data-theme, which forces one scheme and
+ * overrides the OS.
+ */
+
+:root {
+    color-scheme: light dark;
+    --bg: light-dark(#f5f5f5, #111);
+    --surface: light-dark(#fff, #1c1c1e);
+    --surface-subtle: light-dark(#f9f9f9, #252525);
+    --surface-hover: light-dark(#fafafa, #242424);
+    --surface-accent: light-dark(#f0f7ff, #1a2535);
+    --text: light-dark(#1a1a1a, #e8e8e8);
+    --text-subtle: light-dark(#666, #999);
+    --text-muted: light-dark(#888, #7a7a7a);
+    --text-faint: light-dark(#bbb, #5a5a5a);
+    --border: light-dark(#e8e8e8, #333);
+    --border-subtle: light-dark(#f0f0f0, #2a2a2a);
+    --shadow: light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.4));
+    --blue: light-dark(#4a90e2, #5a9fe8);
+    --red: light-dark(#c0392b, #e05c4a);
+    --red-bg: light-dark(#fdf0ef, #2a1515);
+    --red-border: light-dark(#f5c6c2, #5a2525);
+    --amber-bg: light-dark(#fdf6e3, #2a2515);
+    --amber-border: light-dark(#f0e2b8, #4a4025);
+    --amber-text: light-dark(#8a6d3b, #c9a96a);
+    /* Author stripes on discussion notes. Each pair is a darker light-mode
+       value and a lighter dark-mode one so the stripe stays visible against
+       --surface either way. They are decoration, not text, so they only need
+       to be distinguishable from each other rather than hit a text contrast
+       ratio. --blue is deliberately absent: it is reserved for your own notes,
+       matching the accent your board column already uses.
+
+       The five are spread across the hue wheel rather than picked for looks,
+       because --blue sits among them and every pair has to be told apart at a
+       3px stripe. An earlier set put a teal at 193 (19 from --blue) and a
+       crimson at 344 (38 from its own orange), and both pairs read as the same
+       colour in a list. Orange and gold, 20 apart, are the tightest pair left
+       and lean on lightness rather than hue to separate; with six colours on a
+       wheel some pair has to be adjacent. */
+    --author-1: light-dark(#ea580c, #fb923c); /* orange, hue 25 */
+    --author-2: light-dark(#15803d, #4ade80); /* green, hue 142 */
+    --author-3: light-dark(#9333ea, #c084fc); /* purple, hue 272 */
+    --author-4: light-dark(#db2777, #f472b6); /* pink, hue 333 */
+    --author-5: light-dark(#a16207, #eab308); /* gold, hue 45 */
+    /* The height of a reveal/timer control, and so of the row that holds them.
+       Pinned rather than left to the tallest child, because that row loses its
+       tallest child the moment you reveal an episode. */
+    --control-height: 2rem;
+}
+
+html[data-theme='light'] {
+    color-scheme: light;
+}
+
+html[data-theme='dark'] {
+    color-scheme: dark;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.5;
+    background: var(--bg);
+    min-height: 100vh;
+    min-height: 100dvh;
+    color: var(--text);
+}
+
+.container {
+    max-width: 760px;
+    margin: 0 auto;
+    background: var(--surface);
+    min-height: 100vh;
+    min-height: 100dvh;
+    box-shadow: 0 0 40px var(--shadow);
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    padding: 16px 32px;
+}
+
+.title {
+    font-size: 1.15rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+.theme-btn {
+    padding: 6px 8px;
+    border: 0;
+    background: 0 0;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 4px;
+    transition:
+        color 0.15s,
+        background 0.15s;
+    display: flex;
+    align-items: center;
+}
+
+.app {
+    padding: 28px 32px;
+}
+
+.loading {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    padding: 40px 0;
+    text-align: center;
+}
+
+.error {
+    font-size: 0.9rem;
+    color: var(--red);
+    background: var(--red-bg);
+    border: 1px solid var(--red-border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin-bottom: 14px;
+}
+
+.notice {
+    font-size: 0.9rem;
+    color: var(--amber-text);
+    background: var(--amber-bg);
+    border: 1px solid var(--amber-border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin-bottom: 14px;
+}
+
+.empty-state {
+    text-align: center;
+    color: var(--text-faint);
+    padding: 40px 16px;
+}
+
+.board-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    margin-bottom: 12px;
+}
+
+.show-filter {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.show-filter-select {
+    height: var(--control-height);
+    max-width: 14rem;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--text);
+}
+
+.sort-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sort-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-right: 2px;
+}
+
+.sort-btn {
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-subtle);
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-family: inherit;
+    transition:
+        color 0.15s,
+        background 0.15s,
+        border-color 0.15s;
+}
+
+.sort-btn.active {
+    background: var(--blue);
+    border-color: var(--blue);
+    color: #fff;
+}
+
+.manage-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin: 0.75rem 0;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-subtle);
+}
+
+.manage-title {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.manage-row {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.manage-field {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.85rem;
+    color: var(--text-subtle);
+}
+
+.manage-field input,
+.manage-field select {
+    height: var(--control-height);
+    padding: 0 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+}
+
+.manage-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.table-wrapper {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+thead {
+    background: var(--surface-subtle);
+}
+
+td,
+th {
+    padding: 11px 16px;
+}
+
+th {
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-subtle);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    user-select: none;
+}
+
+th.check-head,
+td.check-cell {
+    text-align: center;
+    width: 1%;
+    white-space: nowrap;
+}
+
+/* The padding moves from the cell to the label so the label fills the cell and
+   the whole thing is one tap target. The desktop values match the `td, th`
+   padding it replaces, so row height does not change.
+   `height: 1px` on the td plus `height: 100%` on the label is the standard
+   trick for stretching a flex/block child to its auto-height table-cell
+   parent — a percentage height alone resolves against the cell's auto
+   height and does nothing, so the label would otherwise stay pinned to its
+   own content height and float centered in a taller cell (vertical-align:
+   middle on `td`), leaving the rest of the cell visually tinted but not
+   tappable. */
+td.check-cell {
+    height: 1px;
+    padding: 0;
+}
+
+.check-hit {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    height: 100%;
+    padding: 11px 16px;
+    cursor: pointer;
+}
+
+td.check-cell:not(.mine) .check-hit {
+    cursor: not-allowed;
+}
+
+th.check-head.mine,
+td.check-cell.mine {
+    background: var(--surface-accent);
+}
+
+th .you {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--text-muted);
+}
+
+/* Every header carries both its full name and an initials form; the phone
+   breakpoint swaps which one shows. Full names are the default because a wide
+   screen has room for them. */
+.user-name-short {
+    display: none;
+}
+
+.now-watching {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-subtle);
+}
+
+.now-watching-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+
+.now-watching-items {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.nw-chip {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface);
+    font-size: 0.8rem;
+}
+
+.nw-entry {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.nw-chip.active {
+    border-color: var(--blue);
+}
+
+.nw-chip.mine {
+    background: var(--surface-accent);
+}
+
+/* Scrolls that person's season into view down in the board. A tinted disc
+   rather than the bare ▶ this replaced, so it reads as something you can press;
+   the rim is what carries it, since the tint alone disappears against
+   .nw-chip.mine, whose background is already --surface-accent. Same glyph the
+   row's own .watching-indicator uses, which is the cue for what you land on. */
+.nw-jump {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid var(--blue);
+    border-radius: 50%;
+    background: var(--surface-accent);
+    color: var(--blue);
+    font-size: 0.55rem;
+    line-height: 1;
+    cursor: pointer;
+    transition:
+        background-color 0.15s,
+        color 0.15s;
+}
+
+.nw-jump:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+}
+
+.nw-name {
+    font-weight: 600;
+    color: var(--text);
+}
+
+.nw-season {
+    color: var(--text-subtle);
+}
+
+.nw-select {
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 500;
+    border: 0;
+    background: transparent;
+    color: var(--blue);
+    cursor: pointer;
+    max-width: 220px;
+}
+
+.nw-select:focus {
+    outline: 1px solid var(--blue);
+    border-radius: 3px;
+}
+
+.watching-indicator {
+    font-size: 0.7rem;
+    line-height: 1;
+    color: var(--blue);
+}
+
+td {
+    border-bottom: 1px solid var(--border-subtle);
+    vertical-align: middle;
+}
+
+tr:last-child td {
+    border-bottom: none;
+}
+
+.season-cell a {
+    color: var(--text);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition:
+        color 0.15s,
+        border-color 0.15s;
+}
+
+.season-show {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.empty-row {
+    padding: 1rem;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+/* The label is two spans so the phone layout can stack them (see the 640px
+   block). On a wide screen they read as one line, colon and all. */
+.season-sub::before {
+    content: ': ';
+}
+
+.check-cell input {
+    width: 17px;
+    height: 17px;
+    cursor: pointer;
+    accent-color: var(--blue);
+}
+
+.check-cell input:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+/* Fully-watched seasons gray out and sink to the bottom (handled in JS sort). */
+tr.watched-all td {
+    color: var(--text-faint);
+}
+
+tr.watched-all .season-cell a {
+    color: var(--text-faint);
+}
+
+tr.watched-all .check-cell input {
+    opacity: 0.4;
+}
+
+/* The badge sets its own colours, so it would otherwise stay at full contrast
+   on a row everything else has faded out of. Grouped with the rest of the
+   watched-all rules even though .post-badge is declared further down the file:
+   at (0,2,1) against (0,1,0) this wins on specificity, not source order. */
+tr.watched-all .post-badge {
+    border-color: var(--border-subtle);
+    background: transparent;
+    color: var(--text-faint);
+}
+
+/* Lights the row a NowWatching jump button scrolled you to. Duration is kept in
+   step with FLASH_MS in board.js, which is what removes the class.
+
+   An opaque inset shadow fading to transparent, rather than an animated
+   background-color: the cells underneath do not agree on what their background
+   is — td.check-cell.mine is tinted --surface-accent, and the phone layout's
+   pinned td.season-cell is opaque --surface — so animating the background would
+   fade each cell towards some other cell's colour and snap back at the end. A
+   shadow composites over whatever is already there and leaves it exactly as it
+   found it. Being an animation, it also outranks those background declarations
+   in the cascade without needing to out-specify them. */
+tr.flash td {
+    animation: row-flash 2.5s ease-out;
+}
+
+@keyframes row-flash {
+    from {
+        box-shadow: inset 0 0 0 100px var(--surface-accent);
+    }
+    to {
+        box-shadow: inset 0 0 0 100px transparent;
+    }
+}
+
+.back-link {
+    display: inline-block;
+    margin-bottom: 1rem;
+    color: var(--text-subtle);
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+
+.season-view-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.season-view-title {
+    font-size: 1.25rem;
+}
+
+.wiki-link {
+    color: var(--blue);
+    text-decoration: none;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.edit-season-btn {
+    margin-left: auto;
+}
+
+/* A pill rather than loose text: at 0.75rem beside a 1rem season number, the
+   count read as the lightest thing in the row and the two sides of the row did
+   not balance. The chrome supplies the mass the type deliberately does not, so
+   the season label stays the row's loudest element. The glyph is an inline
+   Bootstrap icon rather than 💬, which rendered as a full-colour system emoji —
+   heavier than its own number and deaf to the theme. */
+.post-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: 0.5rem;
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface-subtle);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-subtle);
+    white-space: nowrap;
+}
+
+.episodes {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.episode-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+}
+
+.episode-card.locked {
+    background: var(--surface-subtle);
+}
+
+.episode-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    width: 100%;
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.episode-meta {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.episode-body {
+    margin-top: 0.75rem;
+    border-top: 1px solid var(--border-subtle);
+    padding-top: 0.75rem;
+}
+
+.posts {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    /* Wider than the old 0.4rem so each stripe reads as its own block rather
+       than one long bar broken by hairlines. */
+    gap: 0.75rem;
+}
+
+/* The stripe distinguishes one note from the next and says who wrote it in the
+   same mark — worth more than a plain separator here, because orderPosts
+   interleaves authors by watch offset, so the note above yours is usually
+   someone else's. The colour comes from authorAccent, which keys off the
+   roster order so a person keeps their colour across reloads and viewers.
+   `transparent` is the default so an author with no slot still lines up with
+   the others instead of shifting left. */
+.post {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    border-left: 3px solid transparent;
+    padding-left: 0.6rem;
+}
+
+.post-time {
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    /* Enough to keep the authors in a column for the offsets this holds
+       ("45s" through "~59m"); a tail note's date simply runs wider. Sized for
+       formatOffsetShort — the old 4.5rem was for the "+1:05:00" form and now
+       leaves a gap. */
+    min-width: 2.5rem;
+}
+
+/* Wide enough to hold the roster's longest name, so every note's body starts
+   at the same x rather than at wherever that note's author's name happened to
+   end. A six-character name measures around 56px at this size and weight, so
+   64px clears it with slack to spare — 3.6rem also cleared it, by under 2px,
+   which is inside the margin by which Safari, Chrome, and iOS disagree about
+   the width of the same string. A name longer than the gutter pushes its own
+   body right, which is what every note did before this rule — so the failure
+   mode of a new, longer name is the old behaviour on one row, not a broken
+   layout. */
+.post-author {
+    color: var(--text-subtle);
+    font-weight: 600;
+    min-width: 4rem;
+}
+
+.post-body {
+    /* pre-wrap so a Shift+Enter line break survives into the rendered note.
+       `anywhere` keeps an unbroken run — a pasted URL, say — from pushing the
+       card sideways instead of wrapping. */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* The note's content column: quote block, body, reactions, and the picker,
+   stacked. `.post` stays a baseline-aligned row of time / author / this /
+   actions, so a plain note still reads as one line on a wide screen while a
+   quoted or reacted-to note grows downward rather than sideways. min-width: 0
+   lets a long unbroken run wrap instead of stretching the row. */
+.post-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+    flex: 1;
+}
+
+/* The positioning context the ⋯ menu anchors to on a pointer device. On a
+   phone the menu switches to position: fixed and ignores this — see the
+   `max-width: 640px` block. Deliberately no z-index of its own: leaving it
+   `auto` means no stacking context is created here, so the menu's z-index
+   competes against the whole page rather than only against its siblings
+   inside this note. */
+.post-actions {
+    position: relative;
+    margin-left: auto;
+    display: flex;
+    flex-shrink: 0;
+}
+
+/* Reuses the .post-mine / .post-aN accent classes for its left border, so a
+   quote carries the colour of the person being quoted rather than the person
+   quoting them. */
+.post-quote {
+    border-left: 3px solid var(--border);
+    padding-left: 0.5rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.post-quote-author {
+    display: block;
+    font-weight: 600;
+}
+
+.post-quote-body {
+    display: block;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.post-quote-locked {
+    font-style: italic;
+}
+
+/* Shared by .post's own stripe and .post-quote's: both set border-left as a
+   shorthand, and a shorthand resets every longhand it doesn't mention —
+   including border-left-color. This block MUST stay positioned after every
+   rule above that sets border-left as a shorthand (.post, .post-quote), or
+   the shorthand would run after these color-only rules and reset the colour
+   right back to transparent/var(--border). AGENTS.md documents the same
+   shorthand-after-color hazard for the @media (max-width: 640px) block
+   further down; this is the same trap outside a media query. */
+.post-mine {
+    border-left-color: var(--blue);
+}
+
+.post-a1 {
+    border-left-color: var(--author-1);
+}
+
+.post-a2 {
+    border-left-color: var(--author-2);
+}
+
+.post-a3 {
+    border-left-color: var(--author-3);
+}
+
+.post-a4 {
+    border-left-color: var(--author-4);
+}
+
+.post-a5 {
+    border-left-color: var(--author-5);
+}
+
+.post-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--text-faint);
+    cursor: pointer;
+    padding: 0 0.15rem;
+    font-size: 0.9rem;
+    line-height: 1;
+}
+
+/* A Bootstrap icon (frontend/icons.js). Sized in em so it rides whatever
+   font-size its button ends up with — including the larger one the mobile
+   block gives .post-action — and painted by fill="currentColor" in the markup,
+   so it inherits its button's colour, red hover state included, without a
+   token of its own. The em sizing is what replaced the per-glyph optical
+   corrections the old text-glyph action row needed: these four icons are drawn
+   on one grid and already agree about how much ink they use. */
+.bi {
+    display: block;
+    width: 1.05em;
+    height: 1.05em;
+    flex-shrink: 0;
+}
+
+/* Covers the viewport whenever a note's ⋯ menu is open, so a click anywhere
+   outside dismisses it in both layouts. Transparent on a pointer device —
+   dimming the page behind a three-item dropdown would be theatre — and given a
+   real scrim colour by the mobile block, where the menu is a bottom sheet. */
+.post-menu-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    background: transparent;
+}
+
+/* The anchor the menu flips around — see the @supports block below. Only ever
+   read by anchor positioning, so a browser without it ignores the property and
+   loses nothing. */
+.post-menu-trigger {
+    anchor-name: --post-menu-anchor;
+}
+
+/* Anchored under the ⋯ button and right-aligned to it, so it opens inward
+   from the note's right edge instead of off the side of the card. The gap is a
+   margin rather than part of the offset, so it survives the flip below —
+   flipping swaps the block-start and block-end margins along with the insets,
+   and these two are equal. */
+.post-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-block: 0.25rem;
+    z-index: 21;
+    min-width: 10rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.35rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 16px var(--shadow);
+}
+
+/* A menu opened on the last note of a long board would otherwise run past the
+   bottom of the viewport. flip-block reopens it above the trigger when there
+   isn't room below, with the browser doing the measuring — which is the whole
+   point, since measuring in JS is what this design set out to avoid.
+   Progressive enhancement, and deliberately gated behind @supports rather than
+   layered as duplicate `top` declarations: two `top`s in one rule are exactly
+   what a CSS minifier collapses, and the older one is the fallback. Without
+   support the rule above stands and the menu opens downward as it always has.
+   Positioned before the `max-width: 640px` block on purpose — that block's
+   `inset` shorthand has to come later to reset these insets for the bottom
+   sheet, which cannot overflow and so has nothing to flip. */
+@supports (position-try-fallbacks: flip-block) {
+    .post-menu {
+        position-anchor: --post-menu-anchor;
+        top: anchor(bottom);
+        right: anchor(right);
+        position-try-fallbacks: flip-block;
+    }
+}
+
+/* The rule separating the emoji row above from the named actions below. */
+.post-menu-items {
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--border-subtle);
+    padding-top: 0.35rem;
+}
+
+.post-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    background: none;
+    border: none;
+    border-radius: 0.35rem;
+    color: var(--text-subtle);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.85rem;
+    text-align: left;
+    padding: 0.4rem 0.5rem;
+}
+
+/* Only shown on a phone, where the menu is a bottom sheet: a dropdown you can
+   dismiss by clicking anywhere off it does not need a close button, but a sheet
+   covering the bottom of the screen does — the scrim above it is a small
+   target and not an obvious one. It sits in the top-right corner rather than
+   reading as a full-width Cancel row along the bottom, which is both the
+   taller shape and the one nearest the edge iOS Safari's collapsed toolbar
+   claims — see the `max-width: 640px` block. */
+.post-menu-close {
+    display: none;
+}
+
+/* The header's controls as one row, so the bell and the theme toggle sit
+   together rather than the bell pushing the title around. margin-left: auto
+   is what right-aligns the pair against .header (display: flex, no
+   justify-content) — it used to live on .theme-btn alone, back when the
+   toggle was .header's only direct flex child and so the only thing that
+   needed to absorb the row's free space. Task 7 wrapped it and the bell in
+   this div, which is content-sized with no flex-grow of its own: the free
+   space collects in .header instead, and an auto margin on a child of
+   .header-actions has nothing left to absorb. Moving the margin here is what
+   pushes the div itself, and so both of its children, back to the edge. */
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-left: auto;
+}
+
+/* The positioning context the dropdown hangs off. Deliberately no z-index: no
+   stacking context forms here, so the panel's z-index competes page-wide the
+   way .post-menu's does. */
+.feed-wrap {
+    position: relative;
+}
+
+.feed-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--control-height);
+    min-height: var(--control-height);
+    background: none;
+    /* Borderless, matching .theme-btn beside it: the two read as one pair of
+       header affordances, and a rimmed bell next to an unrimmed sun looked
+       like a control in a different state rather than a different control.
+       The square footprint still comes from --control-height, so dropping the
+       border does not resize the button or move the badge riding its corner. */
+    border: 0;
+    border-radius: 0.5rem;
+    color: var(--text-subtle);
+    cursor: pointer;
+    anchor-name: --feed-anchor;
+}
+
+/* The header's two icon-only buttons. Every other .bi host in this file sets a
+   font-size (.post-action 0.9rem, .reveal-btn 0.85rem, .timer-btn 0.8rem),
+   which is what .bi's em sizing rides; these two had none, because a <button>
+   does not take the page's font on its own — the same trap .timer-chip needed
+   `font-family: inherit` for. They fell back to the UA's ~13.3px, and the bell
+   drew at 14px beside a theme toggle that was sidestepping the whole question
+   with a hardcoded 16px SVG. 0.95rem puts .bi's 1.05em on 16px, so the pair
+   matches and lands where the old hand-written toggle already was. */
+.feed-btn,
+.theme-btn {
+    font-size: 0.95rem;
+}
+
+/* Rides the button's corner rather than sitting beside it, so a two-digit
+   count cannot widen the header row. */
+.feed-badge {
+    position: absolute;
+    top: -0.35rem;
+    right: -0.35rem;
+    min-width: 1.1rem;
+    padding: 0 0.25rem;
+    font-size: 0.7rem;
+    line-height: 1.1rem;
+    font-weight: 600;
+    text-align: center;
+    color: #fff;
+    background: var(--blue);
+    border-radius: 999px;
+}
+
+.feed-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    background: transparent;
+}
+
+/* display: flex; flex-direction: column matches the .post-menu rule these
+   layout rules were copied from. Without it .feed-panel is a block box, so
+   the mobile block's align-self: flex-end on .feed-close (copied from
+   .post-menu-close, which relies on the flex column above it) is inert, and
+   a block-level width: auto flex box fills its containing block anyway,
+   forcing that rule's margin-left: auto to zero — the ✕ rendered centred in
+   a full-width strip instead of the corner. Column-stacked children read the
+   same as block-stacked ones at every width where this matters, so making
+   the base rule match its precedent costs the dropdown layout nothing. */
+.feed-panel {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-block: 0.25rem;
+    z-index: 21;
+    width: min(22rem, calc(100vw - 2rem));
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: 0.35rem;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 16px var(--shadow);
+}
+
+/* Same call as .post-menu: let the browser measure. Gated behind @supports
+   rather than layered as duplicate `top` declarations, since a minifier
+   collapses two `top`s in one rule and drops the fallback. */
+@supports (position-try-fallbacks: flip-block) {
+    .feed-panel {
+        position-anchor: --feed-anchor;
+        top: anchor(bottom);
+        right: anchor(right);
+        position-try-fallbacks: flip-block;
+    }
+}
+
+/* Hidden on a pointer device, where clicking off the dropdown already
+   dismisses. The phone layout reveals it — see the mobile block. */
+.feed-close {
+    display: none;
+}
+
+.feed-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.feed-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 0.35rem;
+    color: var(--text-subtle);
+    text-decoration: none;
+}
+
+/* A dot in the leading gutter rather than a different background: the list
+   should read as one list, with the unread ones marked inside it. */
+.feed-item.unread {
+    position: relative;
+    color: var(--text);
+    font-weight: 600;
+}
+
+.feed-item.unread::before {
+    content: '';
+    position: absolute;
+    left: 0.15rem;
+    top: 0.95rem;
+    width: 0.35rem;
+    height: 0.35rem;
+    border-radius: 999px;
+    background: var(--blue);
+}
+
+.feed-text {
+    font-size: 0.9rem;
+}
+
+.feed-when {
+    font-size: 0.75rem;
+    color: var(--text-faint);
+}
+
+.feed-empty {
+    margin: 0;
+    padding: 1rem 0.6rem;
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--text-faint);
+}
+
+/* Renders inside .post-body, trailing the note's last line. It used to sit on
+   the meta line between the author and the content, where — being present on
+   some notes and not others — it pushed every edited note's body right and
+   undid .post-author's gutter. The margin supplies the gap: .post-body is
+   `pre-wrap`, so a leading space in the markup would be preserved literally
+   and would also give the marker somewhere to wrap away from the body. */
+.post-edited {
+    color: var(--text-faint);
+    font-size: 0.75rem;
+    margin-left: 0.35rem;
+}
+
+.post-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.post-edit-actions {
+    display: flex;
+    gap: 0.4rem;
+    justify-content: flex-end;
+}
+
+.reaction-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+
+.reaction-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: none;
+    color: var(--text-subtle);
+    font-size: 0.8rem;
+    padding: 0.1rem 0.45rem;
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+}
+
+.reaction-chip.mine {
+    border-color: var(--blue);
+    color: var(--blue);
+}
+
+/* The quick row at the top of the ⋯ menu: four emoji plus the ＋ that opens the
+   full picker. 1fr columns spread all five evenly across whatever width the
+   menu has — the dropdown's min-width on a pointer device, the full screen on a
+   phone. Adding or removing a quick-row emoji means changing this count. */
+.emoji-picker {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0.25rem;
+}
+
+.emoji-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 0.15rem 0.35rem;
+    line-height: 1.2;
+}
+
+/* ＋ is a fullwidth plus (U+FF0B) so it fills the cell like the emoji beside
+   it; a plain + at this size reads as a stray tick mark in the row. Muted
+   because it opens a picker rather than applying a reaction. */
+.emoji-more {
+    color: var(--text-subtle);
+}
+
+/* The full picker, which replaces the menu's body when ＋ is pressed. Height is
+   capped so the sheet or dropdown stays a panel rather than growing to ~1900
+   buttons tall, and the grid scrolls inside it. */
+.emoji-full {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-width: 15rem;
+}
+
+/* Back sits beside the search field rather than on a row of its own: the
+   dropdown is short and a dedicated row costs a band of emoji on a phone. */
+.emoji-head {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.emoji-back {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    background: none;
+    border: none;
+    border-radius: 0.35rem;
+    color: var(--text-subtle);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0.25rem;
+}
+
+.emoji-search {
+    flex: 1;
+    min-width: 0;
+    box-sizing: border-box;
+    border: 1px solid var(--border);
+    border-radius: 0.4rem;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.9rem;
+    padding: 0.3rem 0.5rem;
+}
+
+/* `height`, not `max-height`: the box has to be the same size whether it is
+   holding all 1914 emoji or the four that match "cat". Under a max-height the
+   filtered grid is shorter than the cap, so the container becomes content-sized
+   and the whole panel collapses as you type — and on a phone, where the sheet
+   is pinned to the bottom edge and grows upward, collapsing walks the results
+   down toward the keyboard instead of leaving them where your eye already is.
+   `flex: none` keeps .emoji-full's flex column from shrinking it back.
+
+   The scroll container is also the containment context for the per-group
+   content-visibility below, so it has to be the element carrying the height. */
+.emoji-scroll {
+    overflow-y: auto;
+    height: 15rem;
+    flex: none;
+    overscroll-behavior: contain;
+}
+
+/* Roughly 1900 buttons render at once. content-visibility lets the browser skip
+   layout and paint for the groups scrolled out of view, which is what makes
+   that affordable without a windowing library or a scroll listener —
+   contain-intrinsic-size supplies a placeholder height so the scrollbar does
+   not jump as groups are skipped and rendered. The size is a rough per-group
+   estimate, not a measurement; being wrong only costs a little scrollbar drift.
+   Browsers without content-visibility simply render everything, which is
+   correct but slower — the same degrade-rather-than-depend call the menu's
+   position-try-fallbacks makes. */
+.emoji-group {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 12rem;
+}
+
+.emoji-group-title {
+    position: sticky;
+    top: 0;
+    margin: 0;
+    padding: 0.25rem 0;
+    background: var(--surface);
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+/* auto-fill rather than a fixed count: the picker is one width in a dropdown
+   and another across a phone, and this fills whichever it gets. */
+.emoji-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(2rem, 1fr));
+    gap: 0.15rem;
+}
+
+.emoji-empty {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-style: italic;
+    margin: 0;
+    padding: 0.5rem 0;
+}
+
+.no-posts,
+.hidden-note {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-style: italic;
+    padding: 0.25rem 0;
+}
+
+/* The reveal button and the watch timer share one line. The row carries the
+   height itself instead of inheriting it from whichever child is tallest: the
+   reveal button IS that child, and it disappears on reveal, so a content-sized
+   row would shrink by a few pixels at the exact moment the user clicked — and
+   the timer would jump up under their cursor. */
+.episode-actions {
+    display: flex;
+    align-items: center;
+    /* wrap-reverse, not wrap: only genuinely narrow widths can't fit "Show
+       discussion" and the whole timer on one line, and there the reversed
+       cross axis puts the wrapped-off timer *above* the button rather than
+       below it — so revealing still removes the button from under the timer
+       and the timer stays put. Width-driven rather than breakpoint-driven,
+       so anything wide enough for one line keeps one line. */
+    flex-wrap: wrap-reverse;
+    gap: 0.5rem;
+    min-height: var(--control-height);
+    /* No top margin: the row leads the body, so .episode-body's padding-top is
+       already the gap above it. */
+    margin: 0 0 0.75rem;
+}
+
+.reveal-btn {
+    /* inline-flex so the text stays centred once min-height exceeds it. */
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--control-height);
+    padding: 0.35rem 0.75rem;
+    background: var(--surface-accent);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+/* The chip inside .episode-meta. Full-strength text against the muted counts
+   around it, because a stated intention is a different kind of fact from a
+   note count — it was typed by a person rather than derived. */
+.episode-skips {
+    color: var(--text);
+}
+
+/* The positioning context the menu anchors to, so it opens under the button
+   rather than under the whole actions row. */
+.skip {
+    position: relative;
+    display: inline-flex;
+}
+
+/* Sized and weighted as .timer-btn's peer, not .reveal-btn's: revealing is the
+   row's one consequential, irreversible action and keeps the filled treatment
+   to itself. font-family: inherit because a <button> does not take the page's
+   font on its own. */
+.skip-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: var(--control-height);
+    padding: 0.25rem 0.6rem;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-subtle);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.8rem;
+}
+
+/* Filled once a skip is set, so the row shows the state without the menu open —
+   the same accent .timer-chip.running takes for the same reason. */
+.skip-btn.on {
+    background: var(--surface-accent);
+    color: var(--text);
+}
+
+/* Transparent and full-viewport: a tap anywhere off the menu dismisses it,
+   which is what lets the menu itself carry no close button. */
+.skip-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+}
+
+/* Left-aligned to its button rather than right-aligned like .post-menu: this
+   control sits at the left of the actions row, so it opens inward from there. */
+.skip-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-block: 0.25rem;
+    z-index: 21;
+    min-width: 9rem;
+    display: flex;
+    flex-direction: column;
+    padding: 0.35rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 16px var(--shadow);
+}
+
+.skip-menu-item {
+    width: 100%;
+    background: none;
+    border: none;
+    border-radius: 0.35rem;
+    color: var(--text-subtle);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.85rem;
+    text-align: left;
+    padding: 0.4rem 0.5rem;
+}
+
+.skip-menu-item[aria-pressed='true'] {
+    background: var(--surface-accent);
+    color: var(--text);
+}
+
+/* Ruled off above: clearing the skip is a different kind of choice from
+   picking why, and the rule is what stops a mis-tap from crossing between them. */
+.skip-menu-item-clear {
+    margin-top: 0.35rem;
+    border-top: 1px solid var(--border-subtle);
+    padding-top: 0.5rem;
+}
+
+.timer {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* The chip is the pause/resume control, not a readout beside one — there is no
+   Pause button any more, because the thing you want to stop is the number
+   itself and a separate button to stop it was a second place to look. It stays
+   a pill rather than becoming a third roundrect so the one control that shows
+   state still reads differently from the two that only act; the ▶/⏸ glyph
+   carries which way a click will go. font-family: inherit because a <button>
+   does not take the page's font on its own, and min-height pins it to the same
+   line as Restart and ± now that all three are peers in the row. */
+.timer-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-height: var(--control-height);
+    font-variant-numeric: tabular-nums;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    background: var(--surface-subtle);
+    border: 1px solid var(--border);
+    font-family: inherit;
+    font-size: 0.85rem;
+    color: var(--text-subtle);
+    cursor: pointer;
+}
+
+.timer-chip.running {
+    background: var(--surface-accent);
+    color: var(--text);
+}
+
+.timer-expired {
+    font-size: 0.8rem;
+    color: var(--amber-text);
+}
+
+/* Height comes from --control-height rather than from the text, so every
+   control in the timer rows lines up whatever it contains — Restart's word,
+   the ±'s single glyph, and the nudge row's −15s all sit at one height.
+   inline-flex so the label stays centred once min-height exceeds it, the same
+   pairing .reveal-btn uses for the same reason. */
+.timer-btn {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--control-height);
+    padding: 0.25rem 0.6rem;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-subtle);
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.timer-btn.subtle {
+    border-color: transparent;
+    color: var(--text-muted);
+}
+
+/* Rides .timer-btn for its roundrect, so the ± matches Restart above it and the
+   nudge buttons below it rather than being a third shape in a three-control
+   row. This class adds only what a plain .timer-btn cannot say: centring for a
+   single glyph, a min-width so a one-character label is not narrower than every
+   other button, and the open state — which takes .timer-chip.running's accent
+   fill, reusing the "this is live" signal the running timer already establishes
+   rather than inventing a second one. */
+.timer-adjust-toggle {
+    justify-content: center;
+    min-width: var(--control-height);
+    padding: 0.25rem;
+}
+
+.timer-adjust-toggle[aria-expanded='true'] {
+    background: var(--surface-accent);
+    color: var(--text);
+}
+
+/* The timer and its optional adjustment row are one flex item in
+   .episode-actions, not two: two would wrap apart from each other at narrow
+   widths and put the nudges on the far side of the reveal button. */
+.timer-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.4rem;
+    /* Pushes the whole timer to the right edge of .episode-actions — and keeps
+       it there when the reveal button is gone and it is the only child. */
+    margin-left: auto;
+}
+
+.timer-adjust {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    /* Only bites once the row is wide enough to wrap (the phone block below),
+       where it keeps a wrapped-off line hard right with the rest rather than
+       stranded at the left. Unwrapped, the row is content-sized and
+       .timer-stack's flex-end has already placed it. */
+    justify-content: flex-end;
+}
+
+/* The running total, not a per-tap readout: the correction is stored state, so
+   you need to see how far you have pushed yourself to know whether to undo it.
+   Fixed width and tabular figures so the buttons either side hold still while
+   the number changes under a finger. */
+.timer-adjust-total {
+    min-width: 3.5rem;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.8rem;
+    color: var(--text-subtle);
+    text-align: center;
+}
+
+/* Wraps the button row (.timer-adjust) and the optional caption beneath it,
+   so the caption gets its own line instead of squeezing into the same
+   0.35rem-gap flex row as the nudge buttons. */
+/* position: relative is the fallback anchor for .timer-info-text below, for a
+   browser without CSS anchor positioning — that fallback places the tooltip
+   under the whole row rather than snug to the ⓘ button, which is close
+   enough; browsers with support override it to anchor to the button itself. */
+.timer-adjust-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.3rem;
+    position: relative;
+}
+
+/* Deliberately not .timer-btn: it also carries aria-expanded, and .timer-btn's
+   hover/active rules already scope themselves to "the ± is the only .timer-btn
+   with that attribute" (see the hover block below) — giving this its own class
+   keeps that assumption true instead of quietly breaking it.
+   anchor-name is only ever read by .timer-info-text's anchor positioning below
+   — a browser without support ignores it and loses nothing. */
+.timer-info-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--control-height);
+    min-width: var(--control-height);
+    padding: 0.25rem;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.8rem;
+    anchor-name: --timer-info-anchor;
+}
+
+/* A floating card, not an inline caption — it used to sit in normal flow and
+   push the nudge buttons down every time it opened, which is exactly what a
+   tooltip must not do. Always rendered rather than conditionally mounted, so
+   the hover rule further down can reveal it in pure CSS on a pointer device
+   without JS ever knowing a hover happened. Hidden by default; .open
+   (tap/click, via infoOpen — the only path that exists on a phone, which has
+   no hover) is the one JS-driven way to show it. The fallback position
+   (before the @supports block below) is relative to .timer-adjust-panel,
+   since this element isn't a DOM child of the button it's meant to sit under
+   and so has no closer positioned ancestor to fall back to. */
+.timer-info-text {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 5;
+    margin-top: 0.3rem;
+    max-width: 16rem;
+    padding: 0.5rem 0.6rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 16px var(--shadow);
+    font-size: 0.75rem;
+    color: var(--text-subtle);
+    text-align: left;
+}
+
+.timer-info-text.open {
+    display: block;
+}
+
+/* Anchors the tooltip to the ⓘ button itself rather than the whole panel,
+   with the browser doing the measuring — the same call .post-menu already
+   makes and for the same reason (see its @supports block). flip-block
+   reopens it above the button when there's no room below; without support
+   the fallback two rules up stands and it opens downward as it always would.
+   Support (Chrome 125+, Firefox 132+, Safari 26+) is already this file's
+   floor for position-try-fallbacks elsewhere. */
+@supports (position-try-fallbacks: flip-block) {
+    .timer-info-text {
+        position-anchor: --timer-info-anchor;
+        top: anchor(bottom);
+        left: anchor(left);
+        position-try-fallbacks: flip-block;
+    }
+}
+
+.post-form {
+    display: flex;
+    /* The box grows downward as you type, so the button tracks its bottom edge
+       instead of stretching to match its height. */
+    align-items: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    /* Lets the reply chip (flex-basis: 100%, below) take a full line of its
+       own above the textarea/button row, rather than restructuring the
+       markup into a wrapper. */
+    flex-wrap: wrap;
+}
+
+/* Sits inside .post-form, above the textarea. The snippet is already one line
+   (quoteSnippet), so this only has to keep an over-long one from stretching
+   the form. */
+.reply-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    background: var(--surface-subtle);
+    border-radius: 0.4rem;
+    padding: 0.25rem 0.5rem;
+    margin-bottom: 0.35rem;
+    flex-basis: 100%;
+}
+
+.reply-chip-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The compose and edit boxes size themselves to their text with no JS: the
+   textarea and an invisible ::after replica of the same text share one grid
+   cell, so the row is as tall as the text and the textarea stretches to fill it.
+
+   This replaced a hook (useAutoSize) that set the textarea to `height: auto`
+   and read scrollHeight back. Those two reads forced a layout in which the box
+   was collapsed to one line and the document was correspondingly shorter, and
+   on iOS — where this is the last element on the page and the caret is pinned
+   above the keyboard — Safari clamped the scroll offset to that shorter
+   document and then scrolled the caret back into view, once per keystroke. The
+   result was a page that shook while you typed. Nothing here is ever collapsed
+   and nothing is measured, so there is no such moment; sizing on a rotation or
+   a resize also comes free, since the replica rewraps with the box rather than
+   needing a window listener to notice. */
+.post-input-wrap {
+    display: grid;
+    /* Caps the visible box. The row itself keeps growing past this, because the
+       replica does, so the textarea needs the same cap again below to stop
+       stretching into it — this one clamps the wrapper, that one clamps the
+       control. Deliberately no `overflow` here: the overflowing replica is
+       `visibility: hidden`, so it neither paints nor takes a tap, while hiding
+       it would clip the textarea's focus ring and make the wrapper a scroll
+       container of its own. */
+    max-height: 9rem;
+}
+
+/* Scoped to .post-form rather than set on .post-input-wrap itself: there the
+   wrapper is the flex item beside the Post button and has to take the leftover
+   width, and a textarea's intrinsic width comes from `cols`, which can exceed
+   the form at narrow widths — flex items refuse to shrink below that without
+   min-width: 0. In .post-edit, a *column* flex container, the same `flex: 1`
+   would instead set a zero flex-basis on the wrapper's height, which is not
+   what any of this is for. */
+.post-form > .post-input-wrap {
+    flex: 1;
+    min-width: 0;
+}
+
+/* The replica. The trailing space is load-bearing: text ending in a newline has
+   to occupy the empty last line, and without it that line is dropped and the
+   box fails to grow when you press Shift+Enter at the end. */
+.post-input-wrap::after {
+    content: attr(data-value) ' ';
+    visibility: hidden;
+}
+
+/* The two boxes have to break lines at exactly the same points, or they
+   disagree about the line count and the box comes out a line short or a line
+   tall. Everything that decides where a line breaks therefore lives on the
+   pair, never on the textarea alone — including in the `max-width: 640px`
+   block, which raises the font-size. */
+.post-input,
+.post-input-wrap::after {
+    grid-area: 1 / 1;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid transparent;
+    font: inherit;
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+}
+
+.post-input {
+    /* The height comes from the grid row, so a drag handle would only fight it.
+       Growth stops at max-height and the box scrolls from there. */
+    resize: none;
+    overflow-y: auto;
+    max-height: 9rem;
+    background: var(--surface);
+    /* Set after the shared `border` shorthand above, which would reset it. */
+    border-color: var(--border);
+    border-radius: 6px;
+    color: var(--text);
+}
+
+.post-submit {
+    /* Sized for the wider "Posting…" label up front. Without this the button
+       grows when a post starts, the textarea beside it (flex: 1) shrinks to
+       match, and the text you just submitted rewraps and changes the form's
+       height — a lurch, at the exact moment the UI should look steady. */
+    min-width: 6.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.9rem;
+    background: var(--surface-accent);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.post-submit:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* An in-flight post is reporting progress, not refusing input, so it keeps full
+   contrast — the plain :disabled rule would fade the one thing you're waiting on
+   to 50%. Out-specifies that rule on its own, independent of source order. */
+.post-submit:disabled[aria-busy='true'] {
+    opacity: 1;
+}
+
+.spinner {
+    width: 0.75em;
+    height: 0.75em;
+    flex: none;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Still a ring, just not a spinning one — the label carries the message. */
+@media (prefers-reduced-motion: reduce) {
+    .spinner {
+        animation: none;
+    }
+}
+
+/* This block sits at the very end of the un-gated rules, after every base
+   component rule it might otherwise compete with. Three of its rules
+   originally lived earlier in the file (right after the board CSS) and lost
+   silently to same-specificity base rules that happen to be declared further
+   down (.post-time, .episode-head, .post-input) — equal specificity means
+   source order decides, and the block's old position was not reliably after
+   everything it needed to override. Living last removes that whole class of
+   bug instead of patching it selector by selector. */
+@media (max-width: 640px) {
+    .header {
+        padding: 14px 16px;
+    }
+
+    .app {
+        padding: 20px 16px;
+    }
+
+    td,
+    th {
+        padding: 12px 8px;
+    }
+
+    /* The season name stays put while the checkbox columns scroll under it —
+       otherwise you cannot see which season a checkbox belongs to while
+       tapping it. The cells need an opaque background for the same reason. */
+    th.season-head,
+    td.season-cell {
+        position: sticky;
+        left: 0;
+        z-index: 1;
+        background: var(--surface);
+        box-shadow: 1px 0 0 var(--border);
+    }
+
+    th.season-head {
+        background: var(--surface-subtle);
+        z-index: 2;
+    }
+
+    /* row-flash animates box-shadow, which is also what draws this column's
+       divider — so the pinned cell needs a variant that carries the divider
+       through the flash, or the column loses its edge for the flash's duration.
+       Only the name is overridden; duration and easing come from tr.flash td. */
+    tr.flash td.season-cell {
+        animation-name: row-flash-pinned;
+    }
+
+    @keyframes row-flash-pinned {
+        from {
+            box-shadow:
+                inset 0 0 0 100px var(--surface-accent),
+                1px 0 0 var(--border);
+        }
+        to {
+            box-shadow:
+                inset 0 0 0 100px transparent,
+                1px 0 0 var(--border);
+        }
+    }
+
+    /* Number over subtitle, so a long subtitle cannot widen the pinned column. */
+    .season-num,
+    .season-sub {
+        display: block;
+    }
+
+    /* The season label is the row's primary content, so it sets its own sizes
+       rather than inheriting the table's 0.9rem — at that size the subtitle
+       landed near 12px, the smallest text on the board. Abbreviating the
+       shared-column headers freed the width to pay for this. */
+    /* The badge sits at the right edge of the pinned column rather than taking
+       a line of its own under the label. The flex container is the wrapper,
+       not the cell — td.season-cell carries `position: sticky` and the column
+       sizing, and changing its display would put both at risk. */
+    .season-cell-row {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+    }
+
+    /* Without this the label cannot shrink below its content width, so a long
+       subtitle would push the badge out of the cell instead of wrapping. */
+    .season-cell-row a {
+        min-width: 0;
+    }
+
+    .post-badge {
+        margin-left: auto;
+    }
+
+    .season-num {
+        font-size: 1rem;
+    }
+
+    .season-sub {
+        font-size: 0.875rem;
+        color: var(--text-subtle);
+    }
+
+    .season-sub::before {
+        content: none;
+    }
+
+    /* A shared column's name is two names joined by "&". Left unwrapped it
+       forces an ~85px column and squeezes the season name to a few characters
+       per line, which is what made the board unreadable at 390px. Wrapping,
+       combined with the existing `width: 1%` on th.check-head, is what
+       collapses each column to its longest word — no max-width needed, and
+       one would only risk clipping a longer name without breaking it. */
+    th.check-head {
+        white-space: normal;
+    }
+
+    /* The column is already tinted, and each checkbox's aria-label still names
+       its owner, so hiding the suffix here costs width and nothing else. */
+    th.check-head .you {
+        display: none;
+    }
+
+    /* Show initials instead of full names. A shared column is the only kind
+       that wraps — the column sizes to its longest word, so "Bob & Carol"
+       takes two or three lines at every phone width while a single name always
+       takes one — and `abbreviateName` collapses exactly those. `nowrap` is
+       required: without it the column would size to the widest single
+       character and break "B & C" across three lines. */
+    th.check-head .user-name-full {
+        display: none;
+    }
+
+    th.check-head .user-name-short {
+        display: inline;
+        white-space: nowrap;
+    }
+
+    .check-hit {
+        min-height: 44px;
+        padding: 8px;
+    }
+
+    .check-cell input {
+        width: 24px;
+        height: 24px;
+    }
+
+    /* Offset, author and delete stay on a meta line; the body takes the full
+       width beneath it. Without the `order`, the body's 100% basis would push
+       the delete button — which follows it in the DOM — onto a third line. */
+    .post {
+        flex-wrap: wrap;
+    }
+
+    /* Both gutters collapse here: the body is on its own row below the meta
+       line, so a fixed author column would only open dead space between the
+       offset and the name rather than lining anything up. */
+    .post-time,
+    .post-author {
+        min-width: 0;
+    }
+
+    .post-content {
+        flex-basis: 100%;
+        order: 1;
+    }
+
+    /* .timer holds a chip and up to three buttons, and .timer-adjust up to six
+       controls at a 44px touch target — both wrap at phone widths, so this is
+       load-bearing rather than the defensive rule it started as. */
+    .episode-head,
+    .season-view-head,
+    .timer,
+    .timer-adjust,
+    .sort-controls {
+        flex-wrap: wrap;
+    }
+
+    .episode-head {
+        min-height: 44px;
+        align-items: center;
+    }
+
+    /* min-width alongside the group below's min-height: a one-character label
+       would otherwise leave this the one control in the row too narrow to hit
+       reliably, however tall it got. */
+    .timer-adjust-toggle,
+    .timer-info-toggle {
+        min-width: 44px;
+    }
+
+    /* max-width against the viewport rather than 100% of .timer-adjust-panel:
+       that container is shrink-to-fit in this flex-column layout and can be
+       narrower than the card, which would otherwise cramp the tooltip's text
+       into a column a few characters wide. */
+    .timer-info-text {
+        max-width: calc(100vw - 2rem);
+    }
+
+    .reveal-btn,
+    .post-submit,
+    .skip-btn,
+    .timer-chip,
+    .timer-btn {
+        min-height: 44px;
+    }
+
+    /* The compose box gets its touch target on the replica rather than on the
+       textarea: the replica sizes the grid row, and the textarea stretches into
+       it. A min-height on the textarea alone would make the control taller than
+       the row it sits in, leaving the wrapper — and so the form's layout —
+       measuring the shorter of the two. */
+    .post-input-wrap::after {
+        min-height: 44px;
+    }
+
+    .sort-btn {
+        min-height: 44px;
+        padding: 0.5rem 0.9rem;
+        font-size: 0.85rem;
+    }
+
+    .theme-btn {
+        min-width: 44px;
+        min-height: 44px;
+        justify-content: center;
+    }
+
+    /* The ⋯ trigger gets a full touch target where the old four-glyph action
+       row was held to 32px: that restraint was about a bare × deleting a note
+       under your thumb as you scrolled, and deleting now costs opening a menu
+       and hitting a row that says Delete. One control per note also has the
+       room the four did not. The reply chip's cancel shares .post-action and
+       stays small — a 44px button would stretch the chip it sits in — so the
+       sizing hangs off .post-menu-trigger rather than .post-action, which keeps
+       the 32px it had. Both selectors are one class, so the trigger — which
+       carries both — takes 44px on source order alone. */
+    .post-action {
+        min-width: 32px;
+        min-height: 32px;
+        font-size: 1.1rem;
+    }
+
+    .post-menu-trigger {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    .emoji-btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    /* The dropdown becomes a bottom sheet: position: fixed escapes
+       .post-actions (nothing between here and the root is transformed, so
+       fixed really is viewport-relative), which is why the same DOM serves
+       both layouts with no JS measuring anything. It sits flush against the
+       bottom edge, so the border and the rounding drop on three sides.
+       Deliberately no env(safe-area-inset-bottom): index.html does not opt
+       into viewport-fit=cover, so iOS already insets the viewport clear of the
+       home indicator.
+
+       The 1.5rem of bottom padding is a separate concern from that inset and is
+       load-bearing: while iOS Safari's toolbar is collapsed to its pill, the
+       strip along the bottom edge belongs to Safari, and a tap there expands
+       the toolbar instead of reaching the page. The padding holds the sheet's
+       last row up out of that strip. It must stay on the container rather than
+       becoming padding-bottom on that row's button — on the button it would
+       grow the same hit target back down into the swallowed strip, which is the
+       bug with a tidier diff.
+
+       The real fix for that bug was moving the dismiss control out of the strip
+       entirely: it used to be a full-width Cancel row along the sheet's bottom,
+       the reflexive tap and the one most often lost, and it is now the close
+       button in the top-right corner. What the padding still protects is the
+       Delete row, which inherits the bottom-most slot. A swallowed tap there
+       does nothing, so the failure is a control that ignores you once rather
+       than one that fires unasked — but it is the same confusion, hence the
+       padding. Deliberately modest: it shows as empty sheet whenever the
+       toolbar is expanded, and 3rem (enough to clear a collapsed toolbar
+       outright) made the sheet look padded out for no reason a viewer could
+       see. This is the knob if a tap on Delete ever comes up short. */
+    .post-menu {
+        position: fixed;
+        inset: auto 0 0 0;
+        /* The sheet is content-sized against the bottom edge, so it has no way
+           to overflow and nothing to flip; turning the fallback off says so
+           rather than leaving it to be inferred. */
+        position-try-fallbacks: none;
+        min-width: 0;
+        gap: 0.5rem;
+        padding: 0.6rem 0.9rem 1.5rem;
+        border-width: 1px 0 0;
+        border-radius: 0.9rem 0.9rem 0 0;
+        /* The base rule's shadow falls downward, which is off-screen here. */
+        box-shadow: 0 -4px 16px var(--shadow);
+    }
+
+    .post-menu-scrim {
+        background: light-dark(rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.6));
+    }
+
+    .post-menu-item {
+        font-size: 1rem;
+        gap: 0.75rem;
+        padding: 0.6rem;
+    }
+
+    .post-menu .emoji-picker {
+        gap: 0.5rem;
+    }
+
+    /* align-self rather than a wrapper row: .post-menu is already a flex
+       column, so the corner placement is one property and the sheet keeps its
+       flat child list. The negative margins keep the 44px target from costing
+       44px of sheet — the point of moving dismissal into the corner was to stop
+       spending a row on it. Top and right pull the button out into the sheet's
+       own padding; bottom cancels the parent's 0.5rem gap exactly, so the emoji
+       picker sits flush under the button's box rather than overlapping it. The
+       glyph carries ~14px of its own slack inside the target, which is the
+       whitespace the eye actually reads here. */
+    .post-menu-close {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        align-self: flex-end;
+        min-width: 44px;
+        min-height: 44px;
+        margin: -0.4rem -0.5rem -0.5rem 0;
+        background: none;
+        border: none;
+        border-radius: 0.35rem;
+        color: var(--text-faint);
+        cursor: pointer;
+        font-size: 1rem;
+        padding: 0;
+    }
+
+    /* The same element as a bottom sheet. position: fixed escapes .feed-wrap
+       because nothing between it and the root is transformed — the same escape
+       .post-menu relies on. */
+    .feed-panel {
+        position: fixed;
+        inset: auto 0 0 0;
+        /* Content-sized against the bottom edge, so it cannot overflow and has
+           nothing to flip. */
+        position-try-fallbacks: none;
+        width: auto;
+        max-height: 75vh;
+        padding: 0.6rem 0.9rem 1.5rem;
+        border-width: 1px 0 0;
+        border-radius: 0.9rem 0.9rem 0 0;
+        box-shadow: 0 -4px 16px var(--shadow);
+    }
+
+    .feed-scrim {
+        background: light-dark(rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.6));
+    }
+
+    /* Top-right, which is the furthest point in the sheet from the bottom edge
+       iOS Safari's collapsed toolbar owns — a tap along that strip expands the
+       toolbar rather than reaching the page. Same reasoning, and same negative
+       margins, as .post-menu-close. */
+    .feed-close {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        align-self: flex-end;
+        margin: -0.4rem -0.5rem 0 auto;
+        min-width: 44px;
+        min-height: 44px;
+        background: none;
+        border: none;
+        border-radius: 0.35rem;
+        color: var(--text-faint);
+        cursor: pointer;
+    }
+
+    .feed-item {
+        padding: 0.7rem 0.6rem;
+    }
+
+    .feed-text {
+        font-size: 1rem;
+    }
+
+    .reaction-chip {
+        min-height: 32px;
+    }
+
+    /* Safari zooms the page in when a control under 16px takes focus, and does
+       not zoom back out afterwards. 16px is the threshold, not a preference.
+       The base rule's fixed max-width: 220px (not overridden here) already
+       keeps the chip inside a 320px viewport — measured directly, since a
+       percentage max-width on a <select> inside a shrink-to-fit flex parent
+       is circular (the parent's width depends on the select's own intrinsic
+       content width) and browsers resolve that by ignoring the percentage,
+       letting the select render at its full, unconstrained option-text
+       width instead of clipping it. No specificity trick is needed for
+       .post-input here (compare the .sort-btn-style workaround this task
+       used before relocating the block): this block now sits after every
+       base rule in the file, so plain, equal-specificity selectors win on
+       source order alone. */
+    .post-input,
+    .post-input-wrap::after,
+    .nw-select,
+    .show-filter-select,
+    .manage-field input,
+    .manage-field select,
+    .emoji-search {
+        font-size: 16px;
+    }
+
+    /* The full picker gets more of the sheet than it gets of a dropdown: the
+       sheet is already the width of the phone, and a taller grid is the
+       difference between scrolling past two rows at a time and browsing. Sized
+       in vh rather than rem so it cannot outgrow the viewport it sits in, and a
+       fixed height rather than a cap for the reason the base rule gives. */
+    .emoji-scroll {
+        height: 45vh;
+    }
+}
+
+/* Touch targets keyed on the input device rather than the viewport, so a
+   tablet — a coarse pointer well above the 640px breakpoint, and therefore
+   still getting the anchored dropdown — has menu rows a finger can hit.
+   Positioned after the mobile block for the usual reason (media queries add no
+   specificity), though nothing in that block sets these properties today. */
+@media (pointer: coarse) {
+    .post-menu-item,
+    .skip-menu-item,
+    .emoji-btn,
+    .emoji-back {
+        min-height: 44px;
+    }
+
+    /* The back button is the picker's only way out that is not a reaction, so
+       it gets a finger-sized width too — the icon alone is ~16px. */
+    .emoji-back {
+        min-width: 44px;
+    }
+
+    /* The full picker's tracks have to carry the same 44px floor the mobile
+       block puts on .emoji-btn's min-width, or auto-fill sizes the columns from
+       the base rule's 2rem and every button overflows its own track. The two
+       numbers are one decision; keep them together. */
+    .emoji-grid {
+        grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+    }
+
+    /* The jump button reaches 44px through an invisible extender rather than by
+       growing: a 44px disc would set the height of every chip in the strip, and
+       the chip is a label and a season name, not a control. The extender spills
+       ~2px past the chip's own edge, so the strip's gap goes up to keep two
+       neighbouring extenders from meeting in the gutter — gap covers the
+       stacked axis too, which matters because these chips wrap. */
+    .nw-jump::after {
+        content: '';
+        position: absolute;
+        inset: -12px;
+    }
+
+    .now-watching-items {
+        gap: 12px;
+    }
+}
+
+/* Hover effects only where a pointer can actually hover. On a touch device a
+   :hover rule latches after a tap and stays until you tap something else. */
+@media (hover: hover) {
+    .theme-btn:hover {
+        color: var(--text);
+        background: var(--surface-hover);
+    }
+
+    /* :not(.active) rather than relying on source order: .sort-btn.active
+       and .sort-btn:hover are equal specificity (0,2,0), so whichever rule
+       sits later in the file would otherwise win outright and the selected
+       sort button would lose its blue fill while hovered. Scoping the hover
+       rule out of the active state is also the correct UX independent of
+       cascade order — a control that is already selected has nothing useful
+       to say on hover. */
+    .sort-btn:not(.active):hover {
+        color: var(--text);
+        background: var(--surface-hover);
+    }
+
+    tbody tr:hover td {
+        background: var(--surface-hover);
+    }
+
+    tbody tr:hover td.check-cell.mine {
+        background: var(--surface-accent);
+    }
+
+    .season-cell a:hover {
+        color: var(--blue);
+        border-bottom-color: var(--blue);
+    }
+
+    .back-link:hover {
+        color: var(--text);
+    }
+
+    /* The ⋯ trigger and the reply chip's cancel, both of which only lift out of
+       --text-faint on hover. */
+    .post-action:hover {
+        color: var(--text);
+    }
+
+    /* .post-menu-item-delete:hover below overrides the generic row hover for
+       the one item that should read as destructive; it comes later at equal
+       specificity, so source order carries it. */
+    .post-menu-item:hover,
+    .post-menu-close:hover {
+        background: var(--surface-hover);
+        color: var(--text);
+    }
+
+    .post-menu-item-delete:hover {
+        color: var(--red);
+    }
+
+    .reaction-chip:hover,
+    .emoji-btn:hover,
+    .emoji-back:hover {
+        background: var(--surface-hover);
+    }
+
+    /* Every button in both timer rows — Start watching, Restart, the nudges,
+       Reset, and the ± — since they are one family and hovering only some of
+       them made the rest look inert.
+
+       :not([aria-expanded='true']) for the same reason .sort-btn:hover excludes
+       .active: the ± is the only .timer-btn carrying that attribute, and its
+       open state is a class-plus-attribute selector of equal specificity
+       declared earlier, so an unscoped hover would win on source order and
+       flash an open toggle back to its closed fill. */
+    .timer-btn:not([aria-expanded='true']):hover {
+        background: var(--surface-hover);
+    }
+
+    /* Border rather than background, which is what lets one rule cover both
+       states: .timer-chip.running already owns the background at equal
+       specificity, and this block comes later, so a background here would
+       repaint a running chip on hover. */
+    .timer-chip:hover {
+        border-color: var(--text-faint);
+    }
+
+    .timer-info-toggle:hover {
+        color: var(--text);
+    }
+
+    /* Reveals .timer-info-text on hover or keyboard focus of its toggle, with
+       no JS involved — the caption already renders unconditionally (see
+       .timer-info-text above) and infoOpen only ever adds .open, so this is
+       purely additive to the tap/click path rather than a second source of
+       truth for the same state. :has() rather than an adjacent-sibling
+       selector because the toggle sits inside .timer-adjust while the
+       caption is .timer-adjust's own sibling, one level up — nothing shorter
+       reaches across that gap. Support (Chrome 105+, Safari 15.4+, Firefox
+       121+) is well inside this file's existing light-dark() floor. Gated on
+       (hover: hover) for the same reason every other hover rule here is:
+       a phone has no hover to trigger this with, and only ever reaches the
+       caption through infoOpen. */
+    .timer-adjust-panel:has(.timer-info-toggle:hover) .timer-info-text,
+    .timer-adjust-panel:has(.timer-info-toggle:focus-visible) .timer-info-text {
+        display: block;
+    }
+
+    .nw-jump:hover {
+        background: var(--blue);
+        color: var(--surface);
+    }
+
+    /* Same hover as .theme-btn: with the border gone there is no rim left to
+       raise, so the fill is what has to carry the state. */
+    .feed-btn:hover {
+        color: var(--text);
+        background: var(--surface-hover);
+    }
+
+    .feed-item:hover {
+        background: var(--surface-subtle);
+    }
+}
+
+/* Touch gets no hover, so taps need their own feedback. .sort-btn:not(.active)
+   for the same reason as the hover rule above: .sort-btn.active and
+   .sort-btn:active are equal specificity, so without the exclusion the press
+   feedback would flash the already-selected sort button near-white.
+   .skip-btn:not(.on) is the same trap: .skip-btn.on and .skip-btn:active are
+   equal specificity, so a set skip would flash back to the hover fill on
+   press, reading as if the tap had just turned it off. */
+.sort-btn:not(.active):active,
+.skip-btn:not(.on):active,
+.timer-btn:active,
+.timer-adjust-toggle:active,
+.timer-chip:active,
+.reveal-btn:active,
+.post-submit:active,
+.post-menu-item:active,
+.post-menu-close:active,
+.skip-menu-item:active,
+.theme-btn:active {
+    background: var(--surface-hover);
+}
+
+/* Not folded into the group above: --surface-hover is invisible against the
+   disc's tint, and the press this button wants is the same fill its hover
+   takes. Declared after the hover block so a press wins while both apply. */
+.nw-jump:active {
+    background: var(--blue);
+    color: var(--surface);
+}

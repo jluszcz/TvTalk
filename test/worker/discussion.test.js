@@ -139,6 +139,15 @@ describe('POST /api/seasons/:season_id/episodes/:episode/posts', () => {
         }
     });
 
+    it('names the season and its show in the no-such-episode error', async () => {
+        const r = await req('POST', '/api/seasons/1/episodes/14/posts', {
+            body: { body: 'note' },
+            email: 'alice@example.com',
+        });
+        expect(r.status).toBe(404);
+        expect((await r.json()).error).toBe('Show One Season 1 has no episode 14');
+    });
+
     it('returns 400 for a non-numeric episode', async () => {
         const r = await req('POST', '/api/seasons/45/episodes/abc/posts', {
             body: { body: 'note' },

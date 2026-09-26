@@ -281,6 +281,12 @@ app.get('/api/board', async (c) => {
     });
 });
 
+// The season label as users see it on the board — "Show Name Season N" —
+// for error messages that name a season rather than its surrogate id.
+function seasonLabel(showName, number) {
+    return `${showName} Season ${number}`;
+}
+
 app.put(
     '/api/currently-watching',
     zValidator('json', currentlyWatchingUpdate, onInvalid),
@@ -304,7 +310,11 @@ app.put(
             return c.json({ success: true, user_id: me.id, show_id, season_id });
         }
 
-        const season = await c.env.DB.prepare('SELECT id, show_id FROM seasons WHERE id = ?')
+        const season = await c.env.DB.prepare(
+            `SELECT seasons.id, seasons.show_id, seasons.number, shows.name AS show_name
+             FROM seasons JOIN shows ON shows.id = seasons.show_id
+             WHERE seasons.id = ?`,
+        )
             .bind(season_id)
             .first();
         if (!season) return c.json({ error: `Unknown season: ${season_id}` }, 404);
@@ -324,7 +334,12 @@ app.put(
             .bind(me.id, show_id, season_id)
             .run();
         if (meta.changes === 0) {
-            return c.json({ error: `You have already watched season ${season_id}` }, 409);
+            return c.json(
+                {
+                    error: `You have already watched ${seasonLabel(season.show_name, season.number)}`,
+                },
+                409,
+            );
         }
 
         return c.json({ success: true, user_id: me.id, show_id, season_id });
@@ -481,7 +496,11 @@ app.patch('/api/seasons/:season_id', zValidator('json', seasonPatch, onInvalid),
 
     const { subtitle, url, episode_count } = c.req.valid('json');
     // The shrink guard is in the WHERE so a post landing on a high episode
-    // between a check and the write cannot slip past it.
+    // between a check and the write cannot slip past it — that direction only.
+    // The reverse race is not closed: resolveEpisode() reads episode_count and
+    // an episode-scoped route writes in a separate statement afterward, so a
+    // shrink committing in between can leave that write above the new count.
+    // Accepted rather than fixed — see AGENTS.md's PATCH /api/seasons entry.
     const season = await c.env.DB.prepare(
         `UPDATE seasons
          SET subtitle = COALESCE(?2, subtitle),
@@ -530,14 +549,20 @@ async function resolveEpisode(c) {
     }
 
     const season = await c.env.DB.prepare(
-        'SELECT id, show_id, number, subtitle, url, episode_count FROM seasons WHERE id = ?',
+        `SELECT seasons.id, seasons.show_id, seasons.number, seasons.subtitle, seasons.url,
+                seasons.episode_count, shows.name AS show_name
+         FROM seasons JOIN shows ON shows.id = seasons.show_id
+         WHERE seasons.id = ?`,
     )
         .bind(seasonId)
         .first();
     if (!season) return { error: `Unknown season: ${seasonId}`, status: 404 };
 
     if (episode <= 0 || episode > season.episode_count) {
-        return { error: `Season ${seasonId} has no episode ${episode}`, status: 404 };
+        return {
+            error: `${seasonLabel(season.show_name, season.number)} has no episode ${episode}`,
+            status: 404,
+        };
     }
 
     return { season, episode };

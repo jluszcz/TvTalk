@@ -379,8 +379,8 @@ describe('PUT /api/currently-watching', () => {
 
     it('is idempotent — setting the same season twice returns 200', async () => {
         // Works because SQLite counts same-value updates in meta.changes; this
-        // pins that subtlety so the atomic not-watched UPDATE can't regress it
-        // into a spurious 409.
+        // pins that subtlety so the upsert's not-watched guard (INSERT …
+        // ON CONFLICT DO UPDATE) can't regress it into a spurious 409.
         await req('PUT', '/api/currently-watching', {
             body: { show_id: 1, season_id: 1 },
             email: 'alice@example.com',
@@ -425,6 +425,7 @@ describe('PUT /api/currently-watching', () => {
             email: 'alice@example.com',
         });
         expect(r.status).toBe(409);
+        expect((await r.json()).error).toBe('You have already watched Show One Season 1');
         const { users } = await (await req('GET', '/api/board')).json();
         const alice = users.find((u) => u.id === 'user-alice');
         expect(alice.currently_watching).toEqual({});

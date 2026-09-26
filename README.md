@@ -1,16 +1,21 @@
-# Outwatch
+# TV Talk
 
-A shared tracker for which seasons of _Survivor_ a small group has watched. One
-row per season ("Season X: Subtitle", linked to Wikipedia) and one checkbox
-column per person. You can only toggle your own column — identity comes from
-Cloudflare Access. Once everyone has checked a season, it grays out and sorts to
-the bottom.
+A shared tracker for which seasons of which TV shows a small group has
+watched. One row per season ("Show Name Season N", or "Show Name Season N:
+Subtitle" when there is one) and one checkbox column per person. You can only
+toggle your own column — identity comes from Cloudflare Access. Once everyone
+has checked a season, it grays out and sorts to the bottom. Roster members add
+and edit shows and seasons themselves, right from the board and the season
+view.
 
 Built on Cloudflare Workers with a D1 SQLite database, behind Cloudflare Access.
 
 ## Features
 
-- Every U.S. season of _Survivor_ seeded with official subtitles + Wikipedia links
+- Add and edit shows and seasons from the board and the season view — nothing
+  is deletable from the UI, but nothing has to be pre-loaded either
+- A show filter on the board, and a per-show "currently watching" pick for
+  each column, both remembered per browser
 - One checkbox column per person/couple; you can only change your own (Access-derived identity)
 - Couples share a column — either partner's login can toggle it
 - Discussion notes are bylined to the individual who wrote them, so a shared column speaks with two voices
@@ -69,8 +74,8 @@ watching at different paces don't spoil each other.
 
 A bell in the header shows what the rest of the group has been saying. Each
 line names one person, one episode, and how long ago — `Alice commented on
-Season 45 Episode 3`, `3 hours ago` — and links straight to that episode's
-board. A badge counts what has landed since you last opened it.
+Lanterns Season 1 Episode 3`, `3 hours ago` — and links straight to that
+episode's board. A badge counts what has landed since you last opened it.
 
 A person's notes on one episode in one sitting collapse to a single line, so a
 lively night is one entry rather than twenty. The line carries no note count:
@@ -101,11 +106,10 @@ first launch from the home screen therefore runs the Access login flow again,
 and may bounce out to Safari and back before landing in the app. It is a
 one-time cost per install.
 
-### Regenerating the icons
+### Generating the icons
 
-`assets/icon-source.png` is the original artwork; every other icon is derived
-from it with macOS's built-in `sips` and committed. Regenerate only if the
-artwork changes:
+Drop the artwork at `assets/icon-source.png`, then generate every other icon
+from it with macOS's built-in `sips` and commit the results:
 
 ```bash
 sips -s format png -Z 512 assets/icon-source.png --out public/icon-512.png
@@ -119,10 +123,15 @@ sips -s format png -Z 410 assets/icon-source.png --out /tmp/icon-410.png
 sips --padToHeightWidth 512 512 --padColor 000000 /tmp/icon-410.png --out public/icon-maskable-512.png
 ```
 
+Until `assets/icon-source.png` exists and these commands have been run, the
+icon files under `public/` are absent and the URLs `index.html` and
+`manifest.json` reference for them 404 — the app still works, it just installs
+with no icon.
+
 There is no build step for this — the icons are committed, so CI never needs an
 image toolchain. The source sits in `assets/` rather than `public/` because
 everything under `public/` is uploaded as a Workers static asset and answerable
-at its own URL; the original is 1.8 MiB that no page links to, so there is no
+at its own URL, and nothing links to the original artwork, so there is no
 reason to serve it.
 
 ## Stack
@@ -147,31 +156,34 @@ reason to serve it.
 ```bash
 npm install
 
-# Create the D1 database (first time only)
-npx wrangler d1 create outwatch
+# 1. Create the D1 database (first time only)
+npx wrangler d1 create tvtalk
 # Paste the database_id output into wrangler.toml
 
-# Apply schema + season data locally
-npx wrangler d1 migrations apply outwatch --local
+# 2. Apply the schema + seeded shows and seasons
+npx wrangler d1 migrations apply tvtalk --local
+npx wrangler d1 migrations apply tvtalk --remote
 
-# Apply schema + season data to production
-npx wrangler d1 migrations apply outwatch
-
-# Add the roster — the people and their login emails (not committed; see "The roster")
+# 3. Add the roster — the people and their login emails (not committed; see "The roster")
 cp roster.example.sql roster.sql   # then edit in the real names + emails
-npx wrangler d1 execute outwatch --local  --file=roster.sql
-npx wrangler d1 execute outwatch --remote --file=roster.sql
+npx wrangler d1 execute tvtalk --local  --file=roster.sql
+npx wrangler d1 execute tvtalk --remote --file=roster.sql
 
 # Seed sample watched state for local dev (optional)
-npx wrangler d1 execute outwatch --local --file=seed.sql
+npx wrangler d1 execute tvtalk --local --file=seed.sql
 
-# Tell the Worker how to verify Access tokens (production only; see "Authentication")
+# 4. Tell the Worker how to verify Access tokens (production only; see "Authentication")
 npx wrangler secret put ACCESS_TEAM_DOMAIN   # e.g. https://your-team.cloudflareaccess.com
 npx wrangler secret put ACCESS_AUD           # the application's AUD tag
 
 # Start dev server
 npm run dev
 ```
+
+The two shows seeded by the migrations — _The Great British Bake Off_ Season
+14 and _Lanterns_ Season 1 — are a starting point, not a limit: once the app
+is running, any roster member can add further shows and seasons from the
+board's "＋ Add season" form, or edit an existing one from its season view.
 
 ### Local dev identity
 
@@ -213,8 +225,8 @@ cp roster.example.sql roster.sql
 # edit roster.sql — real names + emails, keeping the generic user-N ids
 
 # apply to local and production (separate from `migrations apply`)
-npx wrangler d1 execute outwatch --local  --file=roster.sql
-npx wrangler d1 execute outwatch --remote --file=roster.sql
+npx wrangler d1 execute tvtalk --local  --file=roster.sql
+npx wrangler d1 execute tvtalk --remote --file=roster.sql
 ```
 
 ### Test data
@@ -267,12 +279,11 @@ npm run build    # one-shot production bundle
 
 Apply any new migrations to production before deploying — `npm run deploy`
 does not do this for you. Deploying Worker code that reads or writes a column
-a migration hasn't added yet breaks outright; `author_email` (migration
-`0006`) is the current example, since the Worker both selects and inserts it
-on every discussion request.
+or table a migration hasn't added yet breaks outright, since the code and the
+schema must agree on every deploy.
 
 ```bash
-npx wrangler d1 migrations apply outwatch
+npx wrangler d1 migrations apply tvtalk
 npm run deploy
 ```
 
@@ -288,7 +299,7 @@ deployed Worker records every request it answers. That is usually the only
 durable evidence left over from a bug someone else hit on their phone — the
 state that caused it dies with the app being closed, which is often also what
 appeared to fix it. Read them in the Cloudflare dashboard (Workers & Pages →
-outwatch → Logs), or watch live while someone reproduces:
+tvtalk → Logs), or watch live while someone reproduces:
 
 ```bash
 npx wrangler tail
@@ -311,8 +322,11 @@ caller who is not on the roster.
 
 Broadly, the routes cover:
 
-- **The board** — who is on it, which seasons each person has watched, and what
-  each person is currently watching.
+- **The board** — who is on it, which seasons of which shows each person has
+  watched, and what each person is currently watching, per show.
+- **Shows and seasons** — adding a new show or season and editing an
+  existing one's name, link, subtitle, or episode count. Nothing is
+  deletable through the API.
 - **The discussion boards** — the notes on a season's episodes, plus replies,
   edits, deletes, and emoji reactions. All of it sits behind the spoiler rule:
   someone else's note is readable only once you have watched the season or
@@ -332,16 +346,23 @@ towards.
 
 ## Database Schema
 
-Nine tables in D1 (SQLite): `users` and `user_emails` (the roster — board
-columns, and the login emails that map onto them), `seasons` (reference data,
-seeded by migration `0002`, with later seasons added as they air), `watched`,
-`posts`, `reactions`, `reveals`, `watch_sessions`, and `watch_offsets`.
+Twelve tables in D1 (SQLite): `users` and `user_emails` (the roster — board
+columns, and the login emails that map onto them), `shows` and `seasons`
+(reference data, seeded by migration `0002` and thereafter added and edited by
+roster members from the app), `watched`, `currently_watching`, `posts`,
+`reactions`, `reveals`, `watch_sessions`, `watch_offsets`, and
+`episode_statuses`.
 
 One distinction runs through all of them: **a `users` row is a board column, not
 a person.** A couple shares one column, one checkbox, and one watch timer, so
 everything about _watching_ is keyed on `users.id` — while authorship, reactions,
 and the feed's read mark are keyed on the individual's email, because a byline
 and an unread badge belong to a person rather than to a household.
+
+A season belongs to a show (`seasons.show_id`), but every episode-scoped table
+— `posts`, `reveals`, `watch_sessions`, `watch_offsets`, `episode_statuses` —
+keys on the season's own surrogate `id` rather than on `(show_id, number)`, so
+none of them need to know shows exist at all.
 
 `users` and `user_emails` are populated from the gitignored `roster.sql` rather
 than by a migration — see [The roster](#the-roster). Every other table is created

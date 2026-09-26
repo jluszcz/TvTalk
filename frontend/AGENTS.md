@@ -5,9 +5,19 @@ of the root `AGENTS.md` so it loads only when working on these files.
 
 - `App` fetches `/api/board` on load and owns `users`, `seasons`, `me` state; it refetches when the tab regains focus/visibility so other people's changes show up without a reload.
 - The `Board` component supports two sort modes toggled by a button group:
-    - `sortSeasons` (default, "Season" mode) — sinks fully-watched seasons to the bottom, then sorts by season number.
-    - `sortBySeenCount` ("Seen Count" mode) — sinks fully-watched seasons to the bottom, then sorts by ascending watcher count (ties broken by season number).
+    - `sortSeasons` (default, "Season" mode) — sinks fully-watched seasons to the bottom, then sorts by show name, then season number.
+    - `sortBySeenCount` ("Seen Count" mode) — sinks fully-watched seasons to the bottom, then sorts by ascending watcher count, then show name, then season number.
       Both functions live in `utils.js` and are shared with tests.
+- A "Show" `<select>` beside the sort buttons filters the board to one show or
+  "All shows". The choice is read and written by `resolveShowFilter`/the
+  `showFilter` localStorage key in `board.js`, wrapped in try/catch so a
+  browser that refuses storage (private mode, blocked site data) just falls
+  back to reading it fresh every load. The stored value is a show id as a
+  string; `resolveShowFilter` treats anything that isn't the id of a show
+  currently on the board — unset, malformed, or naming a show since removed
+  from this browser's view — as "All shows" rather than throwing or filtering
+  to nothing. The filter narrows both the season rows (`filterByShow`) and the
+  `NowWatching` strip's shown shows.
 - Checkbox toggles are optimistic: the cell flips immediately, then reconciles
   with the server and reverts on failure.
 - Optimistic mutations race the focus refetch, so both `App` and `SeasonView`
@@ -44,16 +54,54 @@ of the root `AGENTS.md` so it loads only when working on these files.
   installed to a home screen there is no reload button to point at and only a
   top-level navigation re-runs the Access handshake.
 - Only the current user's column checkboxes are enabled; others are read-only.
-- Each `NowWatching` chip leads with `.nw-jump`, a button that scrolls that
-  person's currently-watching season into view down in the board and lights the
-  row for `FLASH_MS`. `Board` owns `flashId` and clears it on a timer;
-  `SeasonRow` carries `id="season-row-<id>"`, keyed on the season rather than
-  the row's position so the anchor survives a re-sort. The jump also focuses
-  the row's season link — with `preventScroll`, so `scrollIntoView` alone
-  decides where the row lands — since otherwise it would move the viewport and
-  nothing else for a keyboard user. The disc is tinted _and_ rimmed: the tint
-  alone vanishes against `.nw-chip.mine`, whose background is already
-  `--surface-accent`.
+- `NowWatching` shows one chip per column, above the board. Each chip lists one
+  entry per show the column has a current pick for (`currently_watching`),
+  rather than a single season, since a column can be mid-way through more than
+  one show at once. The viewer's own chip is different: instead of read-only
+  entries, it renders one `<select>` per shown show that either still has
+  seasons the viewer's column hasn't watched (`selectableSeasons`) or already
+  holds a pick for that show — the latter clause is what keeps a picker on
+  screen for a show whose pick has gone stale (e.g. every remaining season was
+  filtered out or watched elsewhere), so there is always a control to clear it
+  from rather than a pick nothing on screen can reach.
+- Each entry in a `NowWatching` chip leads with its own `.nw-jump`, a button
+  that scrolls that show's currently-watching season into view down in the
+  board and lights the row for `FLASH_MS`. `Board` owns `flashId` and clears
+  it on a timer; `SeasonRow` carries `id="season-row-<id>"`, keyed on the
+  season rather than the row's position so the anchor survives a re-sort. The
+  jump also focuses the row's season link — with `preventScroll`, so
+  `scrollIntoView` alone decides where the row lands — since otherwise it
+  would move the viewport and nothing else for a keyboard user. The disc is
+  tinted _and_ rimmed: the tint alone vanishes against `.nw-chip.mine`, whose
+  background is already `--surface-accent`.
+- `manage.js`'s `AddSeasonForm` (opened from the board's "＋ Add season"
+  button) and `EditSeasonForm` (opened from the season view's Edit button) are
+  **not optimistic**, unlike the checkbox toggles above: a new show or season
+  needs the server's id before anything can reference it, and an edit's
+  server-side validation (the duplicate-name check, the episode-count shrink
+  guard) can refuse a save the client has no way to predict — so both forms
+  wait for the response and render its error inline rather than applying a
+  guess and reconciling after the fact. Both use `useSubmitGuard` (`hooks.js`)
+  for the submit-once rule, the same guard the compose and edit boxes use.
+  Success refetches: `AddSeasonForm` calls `onDone` (closes the form and
+  refetches the board); `EditSeasonForm` calls `onSaved` (refetches the season
+  view's discussion data and closes the form).
+    - `AddSeasonForm` creates the show first when "New show…" is picked, then
+      the season under it — two requests, since the season needs the new
+      show's id. If the season request fails after the show was created, the
+      show still exists, so retrying with the same name would 409. The form
+      instead switches its picker to the newly created show (`setShowChoice`)
+      and refetches the board (`onChanged`) as soon as the show succeeds, so a
+      retry adds the season to that existing show instead of trying to
+      recreate it.
+    - `EditSeasonForm` sends only the fields that changed, and saves the show
+      before the season — the one place both are on screen together. If the
+      show's `PATCH` succeeds and the season's then fails (e.g. the
+      episode-count shrink guard), the inline error reads "Saved the show, but
+      not the season: …" and the view refreshes via `onChanged` so the header
+      reflects the saved show name — but the form itself stays open with the
+      season fields as typed, so a retry sends only the season `PATCH` instead
+      of resubmitting the already-saved show fields.
 - `row-flash` animates an inset `box-shadow` rather than `background-color`,
   because the cells it crosses disagree about their own background —
   `td.check-cell.mine` is tinted and the phone layout's pinned `td.season-cell`
@@ -122,6 +170,12 @@ of the root `AGENTS.md` so it loads only when working on these files.
   `authorAccent` (`utils.js`) takes a post (`{ mine, author_index }`) and reads
   those fields for its stripe colour, rather than searching the roster with a
   `(userId, meId, users)` triple.
+- The season view's header links `season.url || show.url` — a season without
+  its own link falls back to its show's — and `linkLabel` (`utils.js`) reads
+  "Wikipedia ↗" for a `wikipedia.org` host and "Link ↗" for anything else, so
+  the label doesn't overclaim what a non-Wikipedia link is. Signed-in users
+  also get an Edit button beside the link, which swaps in `EditSeasonForm` in
+  place of the button; only one of the two renders at a time.
 - `SeasonView` renders one `EpisodeBoard` per episode. A locked board (not
   `readable`) shows only the note count, the authors, and the caller's own
   notes; opening it (`POST .../reveal`) is permanent. Marking a whole season

@@ -36,6 +36,5 @@ binding = "ASSETS"
 [[d1_databases]]
 binding = "DB"
 database_name = "tvtalk"
-# Replace with the id printed by `npx wrangler d1 create tvtalk`.
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "c58bdae1-7fa4-4332-806b-cffeb8e26080"
 migrations_dir = "migrations"

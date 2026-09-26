@@ -107,10 +107,11 @@ first launch from the home screen therefore runs the Access login flow again,
 and may bounce out to Safari and back before landing in the app. It is a
 one-time cost per install.
 
-### Generating the icons
+### Regenerating the icons
 
-Drop the artwork at `assets/icon-source.png`, then generate every other icon
-from it with macOS's built-in `sips` and commit the results:
+`assets/icon-source.png` is the original artwork; every other icon is derived
+from it with macOS's built-in `sips` and committed. Regenerate only if the
+artwork changes:
 
 ```bash
 sips -s format png -Z 512 assets/icon-source.png --out public/icon-512.png
@@ -123,11 +124,6 @@ sips -s format png -Z 32  assets/icon-source.png --out public/favicon-32.png
 sips -s format png -Z 410 assets/icon-source.png --out /tmp/icon-410.png
 sips --padToHeightWidth 512 512 --padColor 000000 /tmp/icon-410.png --out public/icon-maskable-512.png
 ```
-
-Until `assets/icon-source.png` exists and these commands have been run, the
-icon files under `public/` are absent and the URLs `index.html` and
-`manifest.json` reference for them 404 — the app still works, it just installs
-with no icon.
 
 There is no build step for this — the icons are committed, so CI never needs an
 image toolchain. The source sits in `assets/` rather than `public/` because

@@ -37,10 +37,10 @@ D1 (SQLite) database and a static Preact frontend.
 - `public/` — Served static assets
     - `index.html` — App shell that loads the bundled script
     - `manifest.json` — Web app manifest; makes the site installable to a home screen
-    - `icon-512.png`, `icon-192.png`, `icon-maskable-512.png`, `apple-touch-icon.png`, `favicon-32.png` — icons generated from `assets/icon-source.png` by `sips` (see README) and committed, unlike the build output below. `assets/icon-source.png` is supplied separately and may be absent; until it and these generated files exist, `index.html` and `manifest.json` still reference them and the icon URLs 404
+    - `icon-512.png`, `icon-192.png`, `icon-maskable-512.png`, `apple-touch-icon.png`, `favicon-32.png` — icons generated from `assets/icon-source.png` by `sips` (see README) and committed, unlike the build output below
     - `script.js`, `script.js.map`, `styles.css`, `styles.css.map` — build output (gitignored)
 - `assets/` — Committed source material that is deliberately **not** served
-    - `icon-source.png` — Original icon artwork, kept so the icons can be regenerated. It lives here rather than in `public/` because `[assets] directory = "public"` uploads every file under `public/` as a Workers static asset with its own URL, and nothing links to the 1.8 MiB original. Supplied separately (see README → Home Screen Icon) and may be absent
+    - `icon-source.png` — Original icon artwork, kept so the icons can be regenerated. It lives here rather than in `public/` because `[assets] directory = "public"` uploads every file under `public/` as a Workers static asset with its own URL, and nothing links to the 1.3 MiB original
 - `src/` — Cloudflare Workers backend
     - `index.js` — Hono app + API for the board, shows and seasons, watched state, and per-episode discussions
     - `access.js` — `accessTokenEmail`, Cloudflare Access JWT verification (signature, issuer, audience, expiry); the only source of caller identity in production

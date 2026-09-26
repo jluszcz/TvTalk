@@ -4,11 +4,14 @@ import htm from 'htm';
 import {
     seasonLabel,
     seasonParts,
+    showMap,
     abbreviateName,
     isFullyWatched,
     sortSeasons,
     sortBySeenCount,
     selectableSeasons,
+    filterByShow,
+    resolveShowFilter,
 } from './utils.js';
 import { Icon } from './icons.js';
 import { FeedBell } from './feed.js';
@@ -50,8 +53,9 @@ export function Header({ theme, onToggleTheme, showFeed }) {
     `;
 }
 
-function SeasonRow({ season, users, meId, fullyWatched, flash, onToggle }) {
-    const { number, subtitle } = seasonParts(season);
+function SeasonRow({ season, show, users, meId, fullyWatched, flash, onToggle }) {
+    const { show: showName, number, subtitle } = seasonParts(season, show);
+    const label = seasonLabel(season, show);
     const rowClass = [fullyWatched ? 'watched-all' : '', flash ? 'flash' : '']
         .filter(Boolean)
         .join(' ');
@@ -61,8 +65,10 @@ function SeasonRow({ season, users, meId, fullyWatched, flash, onToggle }) {
         <tr id=${`season-row-${season.id}`} class=${rowClass}>
             <td class="season-cell">
                 <div class="season-cell-row">
-                    <a href=${`#/season/${season.id}`} aria-label=${seasonLabel(season)}
-                        ><span class="season-num">${number}</span
+                    <a href=${`#/season/${season.id}`} aria-label=${label}
+                        >${showName ? html`<span class="season-show">${showName}</span>` : null}<span
+                            class="season-num"
+                            >${number}</span
                         >${subtitle ? html`<span class="season-sub">${subtitle}</span>` : null}</a
                     >
                     ${
@@ -77,7 +83,7 @@ function SeasonRow({ season, users, meId, fullyWatched, flash, onToggle }) {
             ${users.map((u) => {
                 const checked = season.watched_by.includes(u.id);
                 const isMe = u.id === meId;
-                const isCurrentlyWatching = u.currently_watching_season_id === season.id;
+                const isCurrentlyWatching = u.currently_watching?.[season.show_id] === season.id;
                 return html`
                     <td key=${u.id} class=${'check-cell' + (isMe ? ' mine' : '')}>
                         <label
@@ -98,9 +104,9 @@ function SeasonRow({ season, users, meId, fullyWatched, flash, onToggle }) {
                                 type="checkbox"
                                 checked=${checked}
                                 disabled=${!isMe}
-                                aria-label=${`${u.name} watched ${seasonLabel(season)}`}
+                                aria-label=${`${u.name} watched ${label}`}
                                 onChange=${
-                                    isMe ? (e) => onToggle(season.id, e.target.checked) : undefined
+                                    isMe ? (e) => onToggle(season, e.target.checked) : undefined
                                 }
                             />
                         </label>
@@ -111,66 +117,101 @@ function SeasonRow({ season, users, meId, fullyWatched, flash, onToggle }) {
     `;
 }
 
-// A summary strip above the board: one chip per person showing the season they're
-// currently on. Your own chip is editable (pick from your unwatched seasons);
-// everyone else's is read-only. Each chip also leads with a jump button that
-// scrolls that person's season into view down in the board.
-function NowWatching({ users, seasons, meId, onSetCurrentlyWatching, onJump }) {
+// A summary strip above the board: one chip per column listing the season it is
+// on for each show. Your own chip has a picker per show (from the seasons you
+// haven't watched); everyone else's is read-only. Each entry leads with a jump
+// button that scrolls that season into view.
+function NowWatching({ users, shows, seasons, meId, onSetCurrentlyWatching, onJump }) {
+    const seasonsById = new Map(seasons.map((s) => [s.id, s]));
     return html`
         <div class="now-watching">
             <span class="now-watching-label">Now Watching</span>
             <div class="now-watching-items">
                 ${users.map((u) => {
                     const isMe = u.id === meId;
-                    const cwId = u.currently_watching_season_id;
-                    const current = cwId != null ? seasons.find((s) => s.id === cwId) : null;
+                    const picks = shows
+                        .map((show) => ({
+                            show,
+                            season: seasonsById.get(u.currently_watching?.[show.id]),
+                        }))
+                        .filter((p) => p.season);
                     return html`
                         <div
                             key=${u.id}
-                            class=${
-                                'nw-chip' + (isMe ? ' mine' : '') + (cwId != null ? ' active' : '')
-                            }
+                            class=${'nw-chip' + (isMe ? ' mine' : '') + (picks.length ? ' active' : '')}
                         >
-                            ${
-                                // Gated on the season being found rather than on cwId alone: the
-                                // button's label names the season, so there is nothing to say
-                                // about an id the board did not send a season for.
-                                current
-                                    ? html`<button
-                                          class="nw-jump"
-                                          aria-label=${`Jump to ${
-                                              isMe ? 'your' : `${u.name}'s`
-                                          } current season, ${seasonLabel(current)}`}
-                                          onClick=${() => onJump(current.id)}
-                                      >
-                                          ▶
-                                      </button>`
-                                    : null
-                            }
                             <span class="nw-name">${isMe ? 'You' : u.name}</span>
                             ${
                                 isMe
-                                    ? html`<select
-                                          class="nw-select"
-                                          aria-label="Your currently watching season"
-                                          value=${cwId ?? ''}
-                                          onChange=${(e) =>
-                                              onSetCurrentlyWatching(
-                                                  e.target.value ? Number(e.target.value) : null,
-                                              )}
-                                      >
-                                          <option value="">Not watching</option>
-                                          ${selectableSeasons(seasons, meId).map(
-                                              (s) => html`
-                                                  <option key=${s.id} value=${s.id}>
-                                                      ${seasonLabel(s)}
-                                                  </option>
-                                              `,
-                                          )}
-                                      </select>`
-                                    : html`<span class="nw-season"
-                                          >${current ? seasonLabel(current) : '—'}</span
-                                      >`
+                                    ? shows
+                                          .filter(
+                                              (show) =>
+                                                  u.currently_watching?.[show.id] != null ||
+                                                  selectableSeasons(seasons, meId, show.id).length >
+                                                      0,
+                                          )
+                                          .map((show) => {
+                                              const cwId = u.currently_watching?.[show.id] ?? null;
+                                              const current =
+                                                  cwId != null ? seasonsById.get(cwId) : null;
+                                              return html`<span key=${show.id} class="nw-entry">
+                                                  ${
+                                                      current
+                                                          ? html`<button
+                                                                class="nw-jump"
+                                                                aria-label=${`Jump to your current season, ${seasonLabel(current, show)}`}
+                                                                onClick=${() => onJump(current.id)}
+                                                            >
+                                                                ▶
+                                                            </button>`
+                                                          : null
+                                                  }
+                                                  <select
+                                                      class="nw-select"
+                                                      aria-label=${`Your current season of ${show.name}`}
+                                                      value=${cwId ?? ''}
+                                                      onChange=${(e) =>
+                                                          onSetCurrentlyWatching(
+                                                              show.id,
+                                                              e.target.value
+                                                                  ? Number(e.target.value)
+                                                                  : null,
+                                                          )}
+                                                  >
+                                                      <option value="">
+                                                          ${show.name}: not watching
+                                                      </option>
+                                                      ${selectableSeasons(
+                                                          seasons,
+                                                          meId,
+                                                          show.id,
+                                                      ).map(
+                                                          (s) => html`
+                                                              <option key=${s.id} value=${s.id}>
+                                                                  ${seasonLabel(s, show)}
+                                                              </option>
+                                                          `,
+                                                      )}
+                                                  </select>
+                                              </span>`;
+                                          })
+                                    : picks.length
+                                      ? picks.map(
+                                            ({ show, season }) =>
+                                                html`<span key=${show.id} class="nw-entry">
+                                                    <button
+                                                        class="nw-jump"
+                                                        aria-label=${`Jump to ${u.name}'s current season, ${seasonLabel(season, show)}`}
+                                                        onClick=${() => onJump(season.id)}
+                                                    >
+                                                        ▶
+                                                    </button>
+                                                    <span class="nw-season"
+                                                        >${seasonLabel(season, show)}</span
+                                                    >
+                                                </span>`,
+                                        )
+                                      : html`<span class="nw-season">—</span>`
                             }
                         </div>
                     `;
@@ -180,17 +221,56 @@ function NowWatching({ users, seasons, meId, onSetCurrentlyWatching, onJump }) {
     `;
 }
 
-export function Board({ users, seasons, meId, onToggle, onSetCurrentlyWatching }) {
+// Where the board's show filter is remembered. Per browser, not per person: it
+// is a view preference, and storage failing (private mode, blocked site data)
+// only means the filter resets to all shows.
+const SHOW_FILTER_KEY = 'showFilter';
+
+function readSavedShowFilter() {
+    try {
+        return localStorage.getItem(SHOW_FILTER_KEY);
+    } catch {
+        return null;
+    }
+}
+
+function saveShowFilter(showId) {
+    try {
+        if (showId == null) localStorage.removeItem(SHOW_FILTER_KEY);
+        else localStorage.setItem(SHOW_FILTER_KEY, String(showId));
+    } catch {
+        // Nothing to do: the filter still applies for this page view.
+    }
+}
+
+// App also passes onRefresh, for the add-show/add-season forms this board does
+// not yet render; it is not destructured here since nothing reads it yet.
+export function Board({ users, shows, seasons, meId, onToggle, onSetCurrentlyWatching }) {
     const [sortMode, setSortMode] = useState('season');
+    const [savedFilter, setSavedFilter] = useState(readSavedShowFilter);
     const [flashId, setFlashId] = useState(null);
+    const showId = resolveShowFilter(savedFilter, shows);
+    const shownShows = useMemo(
+        () => (showId == null ? shows : shows.filter((s) => s.id === showId)),
+        [shows, showId],
+    );
+    const shownSeasons = useMemo(() => filterByShow(seasons, showId), [seasons, showId]);
+    const showsById = useMemo(() => showMap(shows), [shows]);
     const userCount = users.length;
     const sorted = useMemo(
         () =>
             sortMode === 'seen'
-                ? sortBySeenCount(seasons, userCount)
-                : sortSeasons(seasons, userCount),
-        [seasons, userCount, sortMode],
+                ? sortBySeenCount(shownSeasons, userCount, shows)
+                : sortSeasons(shownSeasons, userCount, shows),
+        [shownSeasons, userCount, shows, sortMode],
     );
+
+    const chooseShow = (value) => {
+        const next = value ? Number(value) : null;
+        saveShowFilter(next);
+        setSavedFilter(next == null ? null : String(next));
+    };
+
     // Show the current user's column left-most.
     const orderedUsers = useMemo(
         () => [...users].sort((a, b) => (b.id === meId) - (a.id === meId)),
@@ -222,33 +302,47 @@ export function Board({ users, seasons, meId, onToggle, onSetCurrentlyWatching }
         <div>
             <${NowWatching}
                 users=${orderedUsers}
+                shows=${shownShows}
                 seasons=${seasons}
                 meId=${meId}
                 onSetCurrentlyWatching=${onSetCurrentlyWatching}
                 onJump=${jumpTo}
             />
-            <div class="sort-controls">
-                <span class="sort-label">Sort by</span>
-                <button
-                    class=${'sort-btn' + (sortMode === 'season' ? ' active' : '')}
-                    aria-pressed=${sortMode === 'season'}
-                    onClick=${() => setSortMode('season')}
-                >
-                    Season
-                </button>
-                <button
-                    class=${'sort-btn' + (sortMode === 'seen' ? ' active' : '')}
-                    aria-pressed=${sortMode === 'seen'}
-                    onClick=${() => setSortMode('seen')}
-                >
-                    Seen Count
-                </button>
+            <div class="board-controls">
+                <label class="show-filter">
+                    <span class="sort-label">Show</span>
+                    <select
+                        class="show-filter-select"
+                        value=${showId ?? ''}
+                        onChange=${(e) => chooseShow(e.target.value)}
+                    >
+                        <option value="">All shows</option>
+                        ${shows.map((s) => html`<option key=${s.id} value=${s.id}>${s.name}</option>`)}
+                    </select>
+                </label>
+                <div class="sort-controls">
+                    <span class="sort-label">Sort by</span>
+                    <button
+                        class=${'sort-btn' + (sortMode === 'season' ? ' active' : '')}
+                        aria-pressed=${sortMode === 'season'}
+                        onClick=${() => setSortMode('season')}
+                    >
+                        Season
+                    </button>
+                    <button
+                        class=${'sort-btn' + (sortMode === 'seen' ? ' active' : '')}
+                        aria-pressed=${sortMode === 'seen'}
+                        onClick=${() => setSortMode('seen')}
+                    >
+                        Seen Count
+                    </button>
+                </div>
             </div>
             <div class="table-wrapper">
                 <table id="board">
                     <thead>
                         <tr>
-                            <th class="season-head">Season</th>
+                            <th class="season-head">Show / Season</th>
                             ${orderedUsers.map(
                                 (u) => html`
                                     <th
@@ -269,18 +363,27 @@ export function Board({ users, seasons, meId, onToggle, onSetCurrentlyWatching }
                         </tr>
                     </thead>
                     <tbody>
-                        ${sorted.map(
-                            (s) =>
-                                html`<${SeasonRow}
-                                    key=${s.id}
-                                    season=${s}
-                                    users=${orderedUsers}
-                                    meId=${meId}
-                                    fullyWatched=${isFullyWatched(s, userCount)}
-                                    flash=${s.id === flashId}
-                                    onToggle=${onToggle}
-                                />`,
-                        )}
+                        ${
+                            sorted.length === 0 && seasons.length > 0
+                                ? html`<tr>
+                                      <td class="empty-row" colspan=${orderedUsers.length + 1}>
+                                          No seasons for this show yet.
+                                      </td>
+                                  </tr>`
+                                : sorted.map(
+                                      (s) =>
+                                          html`<${SeasonRow}
+                                              key=${s.id}
+                                              season=${s}
+                                              show=${showsById.get(s.show_id)}
+                                              users=${orderedUsers}
+                                              meId=${meId}
+                                              fullyWatched=${isFullyWatched(s, userCount)}
+                                              flash=${s.id === flashId}
+                                              onToggle=${onToggle}
+                                          />`,
+                                  )
+                        }
                     </tbody>
                 </table>
             </div>

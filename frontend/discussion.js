@@ -5,6 +5,7 @@ import { api } from './api.js';
 import { useRefreshGuard, useRefreshOnFocus, useSubmitGuard } from './hooks.js';
 import {
     seasonLabel,
+    linkLabel,
     orderPosts,
     formatOffset,
     formatAdjust,
@@ -251,14 +252,17 @@ export function SeasonView({ seasonId, routeEpisode }) {
             <a class="back-link" href="#/">← Board</a>
             ${error && html`<div class="error">${error}</div>`}
             <div class="season-view-head">
-                <h2 class="season-view-title">${seasonLabel(data.season)}</h2>
-                <a
-                    class="wiki-link"
-                    href=${data.season.wikipedia_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    >Wikipedia ↗</a
-                >
+                <h2 class="season-view-title">${seasonLabel(data.season, data.season.show)}</h2>
+                ${
+                    (data.season.url || data.season.show.url) &&
+                    html`<a
+                        class="wiki-link"
+                        href=${data.season.url || data.season.show.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        >${linkLabel(data.season.url || data.season.show.url)}</a
+                    >`
+                }
             </div>
             ${
                 !data.me &&

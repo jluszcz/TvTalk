@@ -147,11 +147,35 @@ body {
     padding: 40px 16px;
 }
 
+.board-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    margin-bottom: 12px;
+}
+
+.show-filter {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.show-filter-select {
+    height: var(--control-height);
+    max-width: 14rem;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--text);
+}
+
 .sort-controls {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin-bottom: 12px;
 }
 
 .sort-label {
@@ -299,6 +323,7 @@ th .you {
 
 .nw-chip {
     display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
     padding: 4px 10px;
@@ -306,6 +331,12 @@ th .you {
     border-radius: 14px;
     background: var(--surface);
     font-size: 0.8rem;
+}
+
+.nw-entry {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
 }
 
 .nw-chip.active {
@@ -394,6 +425,18 @@ tr:last-child td {
     transition:
         color 0.15s,
         border-color 0.15s;
+}
+
+.season-show {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.empty-row {
+    padding: 1rem;
+    text-align: center;
+    color: var(--text-muted);
 }
 
 /* The label is two spans so the phone layout can stack them (see the 640px

@@ -11,6 +11,7 @@ const html = htm.bind(h);
 
 function App() {
     const [users, setUsers] = useState([]);
+    const [shows, setShows] = useState([]);
     const [seasons, setSeasons] = useState([]);
     const [me, setMe] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -21,6 +22,7 @@ function App() {
     const fetchBoard = useCallback(() => api('/api/board'), []);
     const applyBoard = useCallback((board) => {
         setUsers(board.users);
+        setShows(board.shows);
         setSeasons(board.seasons);
         setMe(board.me);
     }, []);
@@ -61,26 +63,36 @@ function App() {
     usersRef.current = users;
 
     const setCurrentlyWatching = useCallback(
-        async (seasonId) => {
+        async (showId, seasonId) => {
             beginMutation();
-            const prevSeasonId =
-                usersRef.current.find((u) => u.id === meId)?.currently_watching_season_id ?? null;
+            const prev =
+                usersRef.current.find((u) => u.id === meId)?.currently_watching?.[showId] ?? null;
+            const withPick = (picks, id) => {
+                const next = { ...picks };
+                if (id == null) delete next[showId];
+                else next[showId] = id;
+                return next;
+            };
             setUsers((current) =>
                 current.map((u) =>
-                    u.id === meId ? { ...u, currently_watching_season_id: seasonId } : u,
+                    u.id === meId
+                        ? { ...u, currently_watching: withPick(u.currently_watching, seasonId) }
+                        : u,
                 ),
             );
             try {
                 await api('/api/currently-watching', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ season_id: seasonId }),
+                    body: JSON.stringify({ show_id: showId, season_id: seasonId }),
                 });
                 setError(null);
             } catch (err) {
                 setUsers((current) =>
                     current.map((u) =>
-                        u.id === meId ? { ...u, currently_watching_season_id: prevSeasonId } : u,
+                        u.id === meId
+                            ? { ...u, currently_watching: withPick(u.currently_watching, prev) }
+                            : u,
                     ),
                 );
                 setError(err.message);
@@ -92,14 +104,15 @@ function App() {
     );
 
     const toggle = useCallback(
-        async (seasonId, checked) => {
+        async (season, checked) => {
+            const seasonId = season.id;
             beginMutation();
             // Marking a season seen also clears it as your currently-watching
             // season (the server does this too) — you can't be mid-watch on
             // something you've finished.
             const clearsCurrent = clearsCurrentlyWatching(
                 usersRef.current.find((u) => u.id === meId),
-                seasonId,
+                season,
                 checked,
             );
 
@@ -113,9 +126,12 @@ function App() {
             );
             if (clearsCurrent) {
                 setUsers((prev) =>
-                    prev.map((u) =>
-                        u.id === meId ? { ...u, currently_watching_season_id: null } : u,
-                    ),
+                    prev.map((u) => {
+                        if (u.id !== meId) return u;
+                        const next = { ...u.currently_watching };
+                        delete next[season.show_id];
+                        return { ...u, currently_watching: next };
+                    }),
                 );
             }
             try {
@@ -141,7 +157,15 @@ function App() {
                 if (clearsCurrent) {
                     setUsers((prev) =>
                         prev.map((u) =>
-                            u.id === meId ? { ...u, currently_watching_season_id: seasonId } : u,
+                            u.id === meId
+                                ? {
+                                      ...u,
+                                      currently_watching: {
+                                          ...u.currently_watching,
+                                          [season.show_id]: seasonId,
+                                      },
+                                  }
+                                : u,
                         ),
                     );
                 }
@@ -151,6 +175,17 @@ function App() {
             }
         },
         [meId, beginMutation, endMutation],
+    );
+
+    // For the add form: creating a show or season is not optimistic — the new
+    // row needs the server's id — so the board simply refetches afterwards.
+    const refreshBoard = useCallback(
+        () =>
+            refresh().then(
+                () => setError(null),
+                (err) => setError(err.message),
+            ),
+        [refresh],
     );
 
     return html`
@@ -197,10 +232,12 @@ function App() {
                     html`
                         <${Board}
                             users=${users}
+                            shows=${shows}
                             seasons=${seasons}
                             meId=${meId}
                             onToggle=${toggle}
                             onSetCurrentlyWatching=${setCurrentlyWatching}
+                            onRefresh=${refreshBoard}
                         />
                     `
                 }

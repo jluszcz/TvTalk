@@ -9,15 +9,17 @@ of the root `AGENTS.md` so it loads only when working on these files.
     - `sortBySeenCount` ("Seen Count" mode) — sinks fully-watched seasons to the bottom, then sorts by ascending watcher count, then show name, then season number.
       Both functions live in `utils.js` and are shared with tests.
 - A "Show" `<select>` beside the sort buttons filters the board to one show or
-  "All shows". The choice is read and written by `resolveShowFilter`/the
-  `showFilter` localStorage key in `board.js`, wrapped in try/catch so a
-  browser that refuses storage (private mode, blocked site data) just falls
-  back to reading it fresh every load. The stored value is a show id as a
-  string; `resolveShowFilter` treats anything that isn't the id of a show
-  currently on the board — unset, malformed, or naming a show since removed
-  from this browser's view — as "All shows" rather than throwing or filtering
-  to nothing. The filter narrows both the season rows (`filterByShow`) and the
-  `NowWatching` strip's shown shows.
+  "All shows". `readSavedShowFilter`/`saveShowFilter` in `board.js` own the
+  `showFilter` localStorage key, wrapped in try/catch so a browser that
+  refuses storage (private mode, blocked site data) just falls back to
+  reading it fresh every load. The stored value is a show id as a string;
+  `resolveShowFilter` (`utils.js`) only validates a saved value against the
+  shows currently on the board — it does not read or write the key itself —
+  treating anything that isn't the id of a show on the board — unset,
+  malformed, or naming a show since removed from this browser's view — as
+  "All shows" rather than throwing or filtering to nothing. The filter
+  narrows both the season rows (`filterByShow`) and the `NowWatching` strip's
+  shown shows.
 - Checkbox toggles are optimistic: the cell flips immediately, then reconciles
   with the server and reverts on failure.
 - Optimistic mutations race the focus refetch, so both `App` and `SeasonView`
@@ -83,9 +85,11 @@ of the root `AGENTS.md` so it loads only when working on these files.
   wait for the response and render its error inline rather than applying a
   guess and reconciling after the fact. Both use `useSubmitGuard` (`hooks.js`)
   for the submit-once rule, the same guard the compose and edit boxes use.
-  Success refetches: `AddSeasonForm` calls `onDone` (closes the form and
-  refetches the board); `EditSeasonForm` calls `onSaved` (refetches the season
-  view's discussion data and closes the form).
+  Success refetches: `AddSeasonForm` calls `onDone(showId)` (closes the form,
+  switches the board's show filter onto `showId` when a filter is active and
+  set to a different show — otherwise the new row lands on a show the filter
+  hides — and refetches the board); `EditSeasonForm` calls `onSaved`
+  (refetches the season view's discussion data and closes the form).
     - `AddSeasonForm` creates the show first when "New show…" is picked, then
       the season under it — two requests, since the season needs the new
       show's id. If the season request fails after the show was created, the

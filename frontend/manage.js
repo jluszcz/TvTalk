@@ -17,7 +17,9 @@ const jsonRequest = (method, body) => ({
 
 // Adds a season, creating its show first when "New show…" is picked. Not
 // optimistic: the new rows need the server's ids, so success refetches the
-// board through onDone.
+// board through onDone(showId) — the id lets the board switch its show filter
+// onto the show the season just landed in, so an active filter on a different
+// show doesn't hide the row that was just added.
 //
 // Creating the show and the season are two requests. If the second fails, the
 // show already exists, so the picker switches to it and the board refetches
@@ -69,7 +71,7 @@ export function AddSeasonForm({ shows, seasons, defaultShowId, onDone, onChanged
                         url,
                     }),
                 );
-                onDone();
+                onDone(showId);
             } catch (err) {
                 setError(err.message);
             }
@@ -212,7 +214,9 @@ export function EditSeasonForm({ season, onSaved, onChanged, onCancel }) {
             } catch (err) {
                 if (showSaved) {
                     setError(`Saved the show, but not the season: ${err.message}`);
-                    await onChanged();
+                    // Best-effort: the error banner above already reflects
+                    // reality, and the next focus refresh retries.
+                    await onChanged().catch(() => {});
                 } else {
                     setError(err.message);
                 }

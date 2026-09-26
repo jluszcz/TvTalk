@@ -360,8 +360,11 @@ export function Board({
                     seasons=${seasons}
                     defaultShowId=${showId}
                     onChanged=${onRefresh}
-                    onDone=${() => {
+                    onDone=${(addedShowId) => {
                         setAdding(false);
+                        // An active filter on some other show would hide the row
+                        // just added, so follow the season to its show.
+                        if (showId != null && showId !== addedShowId) chooseShow(addedShowId);
                         onRefresh();
                     }}
                     onCancel=${() => setAdding(false)}

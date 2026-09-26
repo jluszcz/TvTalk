@@ -1,0 +1,14 @@
+*.local
+.claude/
+.dev.vars
+.env
+.wrangler/
+coverage/
+node_modules/
+prod.sql
+public/script.js
+public/script.js.map
+public/styles.css
+public/styles.css.map
+roster.sql
+.superpowers/

@@ -2171,6 +2171,9 @@ tr.flash td {
     .post-input,
     .post-input-wrap::after,
     .nw-select,
+    .show-filter-select,
+    .manage-field input,
+    .manage-field select,
     .emoji-search {
         font-size: 16px;
     }

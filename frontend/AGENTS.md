@@ -156,8 +156,9 @@ of the root `AGENTS.md` so it loads only when working on these files.
   unconstrained) that needs `td.check-cell { height: 1px }` plus
   `height: 100%` on the label to fill the cell, since `td` is
   `vertical-align: middle`; and a note's body wraps to full width below its
-  meta line. The text controls specifically — `.post-input` and `.nw-select` —
-  are at least `16px`, since Safari zooms the page in on focusing a form
+  meta line. The text controls specifically — `.post-input`, `.nw-select`,
+  `.show-filter-select`, `.emoji-search`, and the add/edit forms'
+  `.manage-field` inputs and selects — are at least `16px`, since Safari zooms the page in on focusing a form
   control below that and never zooms back out; buttons are not affected and
   stay smaller. That rule has to name `.post-input-wrap::after` alongside
   `.post-input`, for the reason the autosizing bullet below gives. Every `:hover` rule sits behind

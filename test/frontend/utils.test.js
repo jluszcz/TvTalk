@@ -22,6 +22,7 @@ import {
     shouldScrollToEpisode,
     skipLabel,
     filterByShow,
+    collapseShows,
     resolveShowFilter,
     nextSeasonNumber,
     linkLabel,
@@ -215,6 +216,41 @@ describe('filterByShow', () => {
     });
     it("keeps only that show's seasons", () => {
         expect(filterByShow(seasons, 2).map((s) => s.id)).toEqual([2]);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// collapseShows
+// ---------------------------------------------------------------------------
+
+describe('collapseShows', () => {
+    const seasons = [
+        { id: 10, show_id: 2, number: 14, watched_by: ['a', 'b'] },
+        { id: 11, show_id: 1, number: 1, watched_by: ['a', 'b'] },
+        { id: 12, show_id: 1, number: 2, watched_by: ['b'] },
+        { id: 13, show_id: 1, number: 3, watched_by: ['b', 'a'] },
+    ];
+
+    it('leaves a single-season show as its season', () => {
+        expect(collapseShows(seasons).find((e) => e.show_id === 2)).toBe(seasons[0]);
+    });
+    it('folds a multi-season show into one group, keeping season order', () => {
+        const group = collapseShows(seasons).find((e) => e.show_id === 1);
+        expect(group.group).toBe(true);
+        expect(group.seasons.map((s) => s.id)).toEqual([11, 12, 13]);
+    });
+    it('counts as watched by only the users who watched every season', () => {
+        const group = collapseShows(seasons).find((e) => e.show_id === 1);
+        expect(group.watched_by).toEqual(['b']);
+    });
+    it('sorts alongside seasons, sinking a fully watched show', () => {
+        const done = seasons.map((s) => ({ ...s, watched_by: ['a', 'b'] }));
+        const sorted = sortSeasons(
+            collapseShows([...done.slice(1), { id: 14, show_id: 3, number: 1, watched_by: [] }]),
+            2,
+            shows,
+        );
+        expect(sorted.map((e) => (e.group ? `show-${e.show_id}` : e.id))).toEqual([14, 'show-1']);
     });
 });
 

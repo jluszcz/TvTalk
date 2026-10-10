@@ -11,6 +11,7 @@ import {
     sortBySeenCount,
     selectableSeasons,
     filterByShow,
+    collapseShows,
     resolveShowFilter,
 } from './utils.js';
 import { Icon } from './icons.js';
@@ -111,6 +112,57 @@ function SeasonRow({ season, show, users, meId, fullyWatched, flash, onToggle })
                                 }
                             />
                         </label>
+                    </td>
+                `;
+            })}
+        </tr>
+    `;
+}
+
+// A multi-season show folded into one row on the "All shows" board. Clicking it
+// filters the board to that show, which is how you get at its seasons. Each
+// user cell reads as progress through the show rather than a checkbox, since
+// there is no single season to toggle.
+function ShowRow({ group, show, users, meId, fullyWatched, onOpen }) {
+    const total = group.seasons.length;
+    const name = show?.name ?? '';
+    return html`
+        <tr
+            id=${`show-row-${group.show_id}`}
+            class=${'show-row' + (fullyWatched ? ' watched-all' : '')}
+        >
+            <td class="season-cell">
+                <button
+                    class="show-open"
+                    aria-label=${`Show all ${total} seasons of ${name}`}
+                    onClick=${() => onOpen(group.show_id)}
+                >
+                    <span class="show-open-name">${name}</span
+                    ><span class="show-open-count">${total} seasons ›</span>
+                </button>
+            </td>
+            ${users.map((u) => {
+                const watched = group.seasons.filter((s) => s.watched_by.includes(u.id)).length;
+                const isCurrentlyWatching = u.currently_watching?.[group.show_id] != null;
+                return html`
+                    <td
+                        key=${u.id}
+                        class=${'check-cell show-progress' + (u.id === meId ? ' mine' : '')}
+                    >
+                        <span
+                            class="check-hit"
+                            role="img"
+                            aria-label=${`${u.name} watched ${watched} of ${total} seasons of ${name}`}
+                        >
+                            ${
+                                isCurrentlyWatching
+                                    ? html`<span class="watching-indicator" aria-hidden="true"
+                                          >▶</span
+                                      >`
+                                    : null
+                            }
+                            <span aria-hidden="true">${watched}/${total}</span>
+                        </span>
                     </td>
                 `;
             })}
@@ -257,6 +309,10 @@ export function Board({
     const [savedFilter, setSavedFilter] = useState(readSavedShowFilter);
     const [flashId, setFlashId] = useState(null);
     const [adding, setAdding] = useState(false);
+    // A NowWatching jump to a season folded inside a show row: the jump first
+    // opens that show, and this carries the season over to the next render,
+    // where its row exists to scroll to.
+    const [pendingJump, setPendingJump] = useState(null);
     const showId = resolveShowFilter(savedFilter, shows);
     const shownShows = useMemo(
         () => (showId == null ? shows : shows.filter((s) => s.id === showId)),
@@ -265,13 +321,14 @@ export function Board({
     const shownSeasons = useMemo(() => filterByShow(seasons, showId), [seasons, showId]);
     const showsById = useMemo(() => showMap(shows), [shows]);
     const userCount = users.length;
-    const sorted = useMemo(
-        () =>
-            sortMode === 'seen'
-                ? sortBySeenCount(shownSeasons, userCount, shows)
-                : sortSeasons(shownSeasons, userCount, shows),
-        [shownSeasons, userCount, shows, sortMode],
-    );
+    // Only "All shows" collapses: a filter already narrows the board to one
+    // show, and there the point is to see its seasons.
+    const sorted = useMemo(() => {
+        const rows = showId == null ? collapseShows(shownSeasons) : shownSeasons;
+        return sortMode === 'seen'
+            ? sortBySeenCount(rows, userCount, shows)
+            : sortSeasons(rows, userCount, shows);
+    }, [shownSeasons, showId, userCount, shows, sortMode]);
 
     const chooseShow = (value) => {
         const next = value ? Number(value) : null;
@@ -291,13 +348,28 @@ export function Board({
         return () => clearTimeout(timer);
     }, [flashId]);
 
+    useEffect(() => {
+        if (pendingJump == null) return;
+        setPendingJump(null);
+        jumpTo(pendingJump, false);
+    }, [pendingJump]);
+
     // Scrolling alone leaves you hunting for the row you landed on, so the jump
     // also lights it. Focus moves to the season link — with preventScroll, since
     // scrollIntoView is what decides where the row sits — so the jump goes
     // somewhere for a keyboard user instead of only moving the viewport.
-    const jumpTo = (seasonId) => {
+    // `openShow` is false on the second attempt, so a row that still is not
+    // there after opening its show gives up instead of trying again forever.
+    const jumpTo = (seasonId, openShow = true) => {
         const row = document.getElementById(`season-row-${seasonId}`);
-        if (!row) return;
+        if (!row) {
+            const season = seasons.find((s) => s.id === seasonId);
+            if (openShow && season && showId == null) {
+                chooseShow(season.show_id);
+                setPendingJump(seasonId);
+            }
+            return;
+        }
         row.querySelector('.season-cell a')?.focus({ preventScroll: true });
         row.scrollIntoView({
             block: 'center',
@@ -363,12 +435,24 @@ export function Board({
                     onDone=${(addedShowId) => {
                         setAdding(false);
                         // An active filter on some other show would hide the row
-                        // just added, so follow the season to its show.
-                        if (showId != null && showId !== addedShowId) chooseShow(addedShowId);
+                        // just added, and so would "All shows" once the show has
+                        // a second season and folds into a show row, so follow
+                        // the season to its show.
+                        const hidden =
+                            showId == null
+                                ? seasons.some((s) => s.show_id === addedShowId)
+                                : showId !== addedShowId;
+                        if (hidden) chooseShow(addedShowId);
                         onRefresh();
                     }}
                     onCancel=${() => setAdding(false)}
                 />`
+            }
+            ${
+                showId != null &&
+                html`<button class="back-link back-btn" onClick=${() => chooseShow(null)}>
+                    ← All shows
+                </button>`
             }
             <div class="table-wrapper">
                 <table id="board">
@@ -402,18 +486,27 @@ export function Board({
                                           No seasons for this show yet.
                                       </td>
                                   </tr>`
-                                : sorted.map(
-                                      (s) =>
-                                          html`<${SeasonRow}
-                                              key=${s.id}
-                                              season=${s}
-                                              show=${showsById.get(s.show_id)}
-                                              users=${orderedUsers}
-                                              meId=${meId}
-                                              fullyWatched=${isFullyWatched(s, userCount)}
-                                              flash=${s.id === flashId}
-                                              onToggle=${onToggle}
-                                          />`,
+                                : sorted.map((s) =>
+                                      s.group
+                                          ? html`<${ShowRow}
+                                                key=${`show-${s.show_id}`}
+                                                group=${s}
+                                                show=${showsById.get(s.show_id)}
+                                                users=${orderedUsers}
+                                                meId=${meId}
+                                                fullyWatched=${isFullyWatched(s, userCount)}
+                                                onOpen=${chooseShow}
+                                            />`
+                                          : html`<${SeasonRow}
+                                                key=${s.id}
+                                                season=${s}
+                                                show=${showsById.get(s.show_id)}
+                                                users=${orderedUsers}
+                                                meId=${meId}
+                                                fullyWatched=${isFullyWatched(s, userCount)}
+                                                flash=${s.id === flashId}
+                                                onToggle=${onToggle}
+                                            />`,
                                   )
                         }
                     </tbody>

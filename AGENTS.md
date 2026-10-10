@@ -22,7 +22,7 @@ D1 (SQLite) database and a static Preact frontend.
     - `hooks.js` — The app's hooks: theme and dark-mode observation, the refresh and submit guards, hash routing, and the focus refetch
     - `refresh-guard.js` — `createRefreshGuard`, the refetch-vs-mutation race rules as a plain state machine; `useRefreshGuard` is the wiring around it
     - `submit-guard.js` — `createSubmitGuard`, the submit-once and cannot-cancel-in-flight rules as a plain state machine, shared by the compose box and the edit box; `useSubmitGuard` is the wiring around it
-    - `board.js` — `Header`, `Board` and its child components (the season × user grid, the show filter, and the per-show Now Watching strip)
+    - `board.js` — `Header`, `Board` and its child components (the season × user grid with multi-season shows folded into one row on "All shows", the show filter, and the per-show Now Watching strip)
     - `discussion.js` — `SeasonView`, `EpisodeBoard`, `WatchTimer`, and `PostForm`: the per-episode discussion board and its compose box + watch timer UI
     - `manage.js` — `AddSeasonForm` (opened from the board, creates a show if a new one is named and then its season) and `EditSeasonForm` (opened from the season view, patches the show and the season)
     - `post.js` — The note renderer: `PostList` and its children, moved out of `discussion.js` so a quote block, a reaction bar, and the per-note `⋯` action menu have somewhere to live inside each note

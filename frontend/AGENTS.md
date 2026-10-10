@@ -20,6 +20,19 @@ of the root `AGENTS.md` so it loads only when working on these files.
   "All shows" rather than throwing or filtering to nothing. The filter
   narrows both the season rows (`filterByShow`) and the `NowWatching` strip's
   shown shows.
+- On "All shows", every show with more than one season collapses into one
+  `ShowRow` (`collapseShows`, `utils.js`): the show name over "N seasons ›",
+  and each user cell reads `watched/total` instead of a checkbox, with the
+  `▶` indicator when that column has a current pick in the show. Clicking the
+  row sets the show filter to it, which is the only way to reach its seasons;
+  "← All shows" above the table clears the filter again. A collapsed group is
+  shaped like a season so it goes through `sortSeasons`/`sortBySeenCount`
+  unchanged — its `watched_by` is the users who have watched _every_ season,
+  so it sinks once the whole show is fully watched and "Seen Count" counts
+  finishers. A filtered board never collapses. A `NowWatching` jump to a
+  season folded inside a group finds no `season-row-<id>` to scroll to, so it
+  opens the show first and carries the season through `pendingJump` to the
+  next render, where the row exists.
 - Checkbox toggles are optimistic: the cell flips immediately, then reconciles
   with the server and reverts on failure.
 - Optimistic mutations race the focus refetch, so both `App` and `SeasonView`

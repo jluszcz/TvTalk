@@ -44,7 +44,7 @@ D1 (SQLite) database and a static Preact frontend.
 - `src/` — Cloudflare Workers backend
     - `index.js` — Hono app + API for the board, shows and seasons, watched state, and per-episode discussions
     - `access.js` — `accessTokenEmail`, Cloudflare Access JWT verification (signature, issuer, audience, expiry); the only source of caller identity in production
-- `migrations/` — D1 SQL migrations (applied via wrangler): `0001_initial.sql` (the whole schema) and `0002_seed.sql` (seeds _The Great British Bake Off_ Season 14 and _Lanterns_ Season 1)
+- `migrations/` — D1 SQL migrations (applied via wrangler): `0001_initial.sql` (the whole schema) `0002_seed.sql` (seeds _The Great British Bake Off_ Season 14 and _Lanterns_ Season 1), and `0003_survivor.sql` (seeds _Survivor_ Seasons 1–51, the show Outwatch fronts)
 - `scripts/` — Local dev tooling, not part of the build or the Worker
     - `insert-test-post.py` — inserts one fake discussion post (lorem ipsum body, relative or future timestamp, random or named roster author) directly into the local D1 SQLite file under `.wrangler/state/`, for exercising the discussion UI without going through the app. Stdlib-only Python; reads no network and no wrangler CLI, so it cannot reach production. Run repeatedly / in a shell loop for more than one post
 - `roster.sql` — real roster: `users` (names) + `user_emails` (emails), with generic `user-N` ids (gitignored; template in `roster.example.sql`)
@@ -186,6 +186,15 @@ emails, so it is seeded from `roster.sql` (gitignored; template in
 `roster.example.sql`) rather than a committed migration — keep real names and
 emails out of source control. `seed.sql` holds only optional sample `watched`
 rows for local dev.
+
+Migration `0003` adds the show `Survivor` with seasons 1–51. That show is
+shared: Outwatch (`../Outwatch`) binds this same D1 database and is a
+Survivor-only frontend onto it, so its notes, watched marks, timers, and every
+other Survivor row are the same rows TV Talk reads. Three consequences: the
+show's name `Survivor` is load-bearing (Outwatch looks the show up by name),
+every schema change has to be copied into Outwatch's `migrations/` (a
+byte-identical snapshot of this directory) and must keep Outwatch's queries
+working, and roster changes made here apply to Outwatch as well.
 
 ### API Routes
 

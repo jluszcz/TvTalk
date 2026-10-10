@@ -479,6 +479,58 @@ tr:last-child td {
     color: var(--text-muted);
 }
 
+/* A multi-season show folded into one row (ShowRow). The show name leads, with
+   the season count under it, so the row reads as a way in rather than as one
+   more season. Stacked at every width, so the phone block needs no variant. */
+.show-open {
+    display: block;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.show-open-name {
+    display: block;
+    font-weight: 600;
+}
+
+.show-open-count {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+tr.watched-all .show-open {
+    color: var(--text-faint);
+}
+
+/* Progress, not a control: no not-allowed cursor, and the count sits at the
+   size of the row's secondary text. `.check-cell` is in the selector to match
+   the specificity of the `:not(.mine)` cursor rule above, which would
+   otherwise win in every column but your own. */
+td.check-cell.show-progress .check-hit {
+    cursor: default;
+    font-size: 0.8rem;
+    color: var(--text-subtle);
+    white-space: nowrap;
+}
+
+tr.watched-all td.show-progress .check-hit {
+    color: var(--text-faint);
+}
+
+.back-btn {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font-family: inherit;
+    cursor: pointer;
+}
+
 .empty-row {
     padding: 1rem;
     text-align: center;
@@ -2267,6 +2319,10 @@ tr.flash td {
 
     .back-link:hover {
         color: var(--text);
+    }
+
+    .show-open:hover {
+        color: var(--blue);
     }
 
     /* The ⋯ trigger and the reply chip's cancel, both of which only lift out of

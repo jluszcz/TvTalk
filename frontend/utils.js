@@ -103,6 +103,36 @@ export function filterByShow(seasons, showId) {
     return showId == null ? seasons : seasons.filter((s) => s.show_id === showId);
 }
 
+// The "All shows" board: every show with more than one season folds into a
+// single group row, so a long-running show cannot bury everything else. A group
+// is shaped enough like a season to go through sortSeasons/sortBySeenCount
+// unchanged — `watched_by` is the users who have watched *every* season, so it
+// sinks once the whole show is fully watched and counts finishers in "Seen
+// Count" — and `number: 0` is never compared, since a show has only one group.
+// Seasons keep their input order inside a group. Does not mutate the input.
+export function collapseShows(seasons) {
+    const byShow = new Map();
+    for (const s of seasons) {
+        if (!byShow.has(s.show_id)) byShow.set(s.show_id, []);
+        byShow.get(s.show_id).push(s);
+    }
+    return [...byShow.entries()].flatMap(([showId, group]) =>
+        group.length === 1
+            ? group
+            : [
+                  {
+                      group: true,
+                      show_id: showId,
+                      number: 0,
+                      seasons: group,
+                      watched_by: group[0].watched_by.filter((u) =>
+                          group.every((s) => s.watched_by.includes(u)),
+                      ),
+                  },
+              ],
+    );
+}
+
 // A saved filter comes back from localStorage as a string, or not at all, and
 // may name a show that has since been renamed away or never synced to this
 // browser. Anything that isn't a current show's id is "all shows".

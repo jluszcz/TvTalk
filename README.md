@@ -349,7 +349,7 @@ towards.
 
 Twelve tables in D1 (SQLite): `users` and `user_emails` (the roster — board
 columns, and the login emails that map onto them), `shows` and `seasons`
-(reference data, seeded by migration `0002` and thereafter added and edited by
+(reference data, seeded by migrations `0002` and `0003` and thereafter added and edited by
 roster members from the app), `watched`, `currently_watching`, `posts`,
 `reactions`, `reveals`, `watch_sessions`, `watch_offsets`, and
 `episode_statuses`.

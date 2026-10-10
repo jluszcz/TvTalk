@@ -6,12 +6,39 @@ describe('seed', () => {
         const { results } = await env.DB.prepare(
             `SELECT shows.name AS show, seasons.number AS number, seasons.episode_count AS episodes
              FROM seasons JOIN shows ON shows.id = seasons.show_id
+             WHERE shows.name <> 'Survivor'
              ORDER BY shows.name ASC`,
         ).all();
         expect(results).toEqual([
             { show: 'Lanterns', number: 1, episodes: 8 },
             { show: 'The Great British Bake Off', number: 14, episodes: 10 },
         ]);
+    });
+
+    // Outwatch (../Outwatch) reads and writes this database as a Survivor-only
+    // frontend and finds the show by this exact name. The episode counts were
+    // transcribed by hand from Wikipedia: a dropped value leaves a 0 and a
+    // slipped digit leaves a 130, and both are caught here.
+    it('seeds Survivor seasons 1–51 for Outwatch', async () => {
+        const { results } = await env.DB.prepare(
+            `SELECT seasons.number AS number, seasons.subtitle AS subtitle,
+                    seasons.url AS url, seasons.episode_count AS episodes
+             FROM seasons JOIN shows ON shows.id = seasons.show_id
+             WHERE shows.name = 'Survivor'
+             ORDER BY seasons.number ASC`,
+        ).all();
+        expect(results.map((r) => r.number)).toEqual(Array.from({ length: 51 }, (_, i) => i + 1));
+        for (const season of results) {
+            expect(season.episodes).toBeGreaterThanOrEqual(12);
+            expect(season.episodes).toBeLessThanOrEqual(17);
+        }
+        expect(results[0]).toEqual({
+            number: 1,
+            subtitle: 'Borneo',
+            url: 'https://en.wikipedia.org/wiki/Survivor:_Borneo',
+            episodes: 13,
+        });
+        expect(results[50].url).toBe('https://en.wikipedia.org/wiki/Survivor_51');
     });
 
     it('refuses a second show whose name differs only in case', async () => {

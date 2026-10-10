@@ -44,7 +44,7 @@ D1 (SQLite) database and a static Preact frontend.
 - `src/` — Cloudflare Workers backend
     - `index.js` — Hono app + API for the board, shows and seasons, watched state, and per-episode discussions
     - `access.js` — `accessTokenEmail`, Cloudflare Access JWT verification (signature, issuer, audience, expiry); the only source of caller identity in production
-- `migrations/` — D1 SQL migrations (applied via wrangler): `0001_initial.sql` (the whole schema) `0002_seed.sql` (seeds _The Great British Bake Off_ Season 14 and _Lanterns_ Season 1), and `0003_survivor.sql` (seeds _Survivor_ Seasons 1–51, the show Outwatch fronts)
+- `migrations/` — D1 SQL migrations (applied via wrangler): `0001_initial.sql` (the whole schema), `0002_seed.sql` (seeds _The Great British Bake Off_ Season 14 and _Lanterns_ Season 1), and `0003_survivor.sql` (seeds _Survivor_ Seasons 1–51, the show Outwatch fronts)
 - `scripts/` — Local dev tooling, not part of the build or the Worker
     - `insert-test-post.py` — inserts one fake discussion post (lorem ipsum body, relative or future timestamp, random or named roster author) directly into the local D1 SQLite file under `.wrangler/state/`, for exercising the discussion UI without going through the app. Stdlib-only Python; reads no network and no wrangler CLI, so it cannot reach production. Run repeatedly / in a shell loop for more than one post
 - `roster.sql` — real roster: `users` (names) + `user_emails` (emails), with generic `user-N` ids (gitignored; template in `roster.example.sql`)

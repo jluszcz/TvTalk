@@ -25,6 +25,8 @@ import {
     collapseShows,
     resolveShowFilter,
     nextSeasonNumber,
+    seasonsOfShow,
+    moveTarget,
     linkLabel,
 } from '../../frontend/utils.js';
 
@@ -551,6 +553,52 @@ describe('nextSeasonNumber', () => {
     });
     it('is 1 for a show with no seasons', () => {
         expect(nextSeasonNumber(seasons, 3)).toBe(1);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// seasonsOfShow / moveTarget
+// ---------------------------------------------------------------------------
+
+describe('seasonsOfShow', () => {
+    it("returns only that show's seasons, in number order", () => {
+        const seasons = [
+            { id: 3, show_id: 1, number: 2 },
+            { id: 9, show_id: 2, number: 1 },
+            { id: 2, show_id: 1, number: 1 },
+        ];
+        expect(seasonsOfShow(seasons, 1).map((s) => s.id)).toEqual([2, 3]);
+        expect(seasonsOfShow(seasons, 7)).toEqual([]);
+    });
+});
+
+describe('moveTarget', () => {
+    const seasons = [
+        { id: 10, show_id: 1, number: 1, episode_count: 10 },
+        { id: 11, show_id: 1, number: 2, episode_count: 6 },
+        { id: 20, show_id: 2, number: 3, episode_count: 8 },
+        { id: 21, show_id: 2, number: 1, episode_count: 12 },
+    ];
+    it('keeps a valid target as it is', () => {
+        expect(moveTarget(seasons, { showId: 1, seasonId: 10, episode: 9 })).toEqual({
+            showId: 1,
+            seasonId: 10,
+            episode: 9,
+        });
+    });
+    it("picks a new show's lowest-numbered season", () => {
+        expect(moveTarget(seasons, { showId: 2, seasonId: 10, episode: 4 })).toEqual({
+            showId: 2,
+            seasonId: 21,
+            episode: 4,
+        });
+    });
+    it('falls back to episode 1 when the season is too short', () => {
+        expect(moveTarget(seasons, { showId: 1, seasonId: 11, episode: 9 }).episode).toBe(1);
+    });
+    it('leaves a show with no seasons alone', () => {
+        const target = { showId: 5, seasonId: 10, episode: 3 };
+        expect(moveTarget(seasons, target)).toEqual(target);
     });
 });
 

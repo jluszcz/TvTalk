@@ -1782,3 +1782,180 @@ describe('GET /api/seasons/:season_id/discussion — statuses', () => {
         expect(body).not.toContain('bob@example.com');
     });
 });
+
+describe('POST /api/seasons/:season_id/episodes/:episode/posts/move', () => {
+    const move = (email, body, from = '45/episodes/7') =>
+        req('POST', `/api/seasons/${from}/posts/move`, { body, email });
+
+    const row = (id) =>
+        env.DB.prepare(
+            'SELECT season_id, episode, created_at, offset_secs, reply_to_post_id, body FROM posts WHERE id = ?',
+        )
+            .bind(id)
+            .first();
+
+    async function insertPost({ userId, email, episode = 7, offset = null, replyTo = null }) {
+        const { meta } = await env.DB.prepare(
+            `INSERT INTO posts (season_id, episode, user_id, body, created_at, offset_secs, author_email, reply_to_post_id)
+             VALUES (45, ?, ?, 'note', '2026-03-01T20:00:00.000Z', ?, ?, ?)`,
+        )
+            .bind(episode, userId, offset, email, replyTo)
+            .run();
+        return meta.last_row_id;
+    }
+
+    it('moves the caller’s notes and keeps their time and offset', async () => {
+        const id = await insertPost({
+            userId: 'user-alice',
+            email: 'alice@example.com',
+            offset: 600,
+        });
+        const r = await move('alice@example.com', { to_season_id: 46, to_episode: 3 });
+        expect(r.status).toBe(200);
+        expect(await r.json()).toEqual({ success: true, moved: 1 });
+        expect(await row(id)).toMatchObject({
+            season_id: 46,
+            episode: 3,
+            created_at: '2026-03-01T20:00:00.000Z',
+            offset_secs: 600,
+        });
+    });
+
+    it('moves only the caller’s own notes, not a partner’s or another column’s', async () => {
+        const bob = await insertPost({ userId: 'user-bob', email: 'bob@example.com' });
+        const carol = await insertPost({ userId: 'user-bob', email: 'carol@example.com' });
+        const alice = await insertPost({ userId: 'user-alice', email: 'alice@example.com' });
+        const r = await move('bob@example.com', { to_season_id: 45, to_episode: 8 });
+        expect(await r.json()).toEqual({ success: true, moved: 1 });
+        expect((await row(bob)).episode).toBe(8);
+        expect((await row(carol)).episode).toBe(7);
+        expect((await row(alice)).episode).toBe(7);
+    });
+
+    it('moves a column’s notes with no recorded author for either partner', async () => {
+        const old = await insertPost({ userId: 'user-bob', email: null });
+        await move('carol@example.com', { to_season_id: 45, to_episode: 8 });
+        expect((await row(old)).episode).toBe(8);
+    });
+
+    it('moves a note to another show', async () => {
+        await env.DB.exec(
+            "INSERT INTO shows (id, name, url, created_at) VALUES (2, 'Show Two', '', '2026-01-01T00:00:00.000Z')",
+        );
+        await env.DB.exec(
+            "INSERT INTO seasons (id, show_id, number, subtitle, url, episode_count, created_at) VALUES (60, 2, 1, '', '', 8, '2026-01-01T00:00:00.000Z')",
+        );
+        const id = await insertPost({ userId: 'user-alice', email: 'alice@example.com' });
+        await move('alice@example.com', { to_season_id: 60, to_episode: 2 });
+        expect(await row(id)).toMatchObject({ season_id: 60, episode: 2 });
+    });
+
+    it('keeps the displayed offset when the two episodes carry different corrections', async () => {
+        await env.DB.exec(
+            'INSERT INTO watch_offsets (user_id, season_id, episode, adjust_secs, updated_at) VALUES ' +
+                "('user-alice', 45, 7, -60, '2026-03-01T20:00:00.000Z'), " +
+                "('user-alice', 46, 3, 30, '2026-03-01T20:00:00.000Z')",
+        );
+        const id = await insertPost({
+            userId: 'user-alice',
+            email: 'alice@example.com',
+            offset: 600,
+        });
+        const untimed = await insertPost({ userId: 'user-alice', email: 'alice@example.com' });
+        await move('alice@example.com', { to_season_id: 46, to_episode: 3 });
+
+        // Shown at 540 on episode 7 (600 − 60); still 540 on the target (510 + 30).
+        expect((await row(id)).offset_secs).toBe(510);
+        expect((await row(untimed)).offset_secs).toBeNull();
+        const data = await (
+            await req('GET', '/api/seasons/46/discussion', { email: 'alice@example.com' })
+        ).json();
+        const moved = data.episodes.find((e) => e.episode === 3).posts.find((p) => p.id === id);
+        expect(moved.offset_secs).toBe(540);
+    });
+
+    it('detaches reply links the move would stretch across episodes', async () => {
+        const bobNote = await insertPost({ userId: 'user-bob', email: 'bob@example.com' });
+        const aliceNote = await insertPost({ userId: 'user-alice', email: 'alice@example.com' });
+        const aliceToBob = await insertPost({
+            userId: 'user-alice',
+            email: 'alice@example.com',
+            replyTo: bobNote,
+        });
+        const aliceToAlice = await insertPost({
+            userId: 'user-alice',
+            email: 'alice@example.com',
+            replyTo: aliceNote,
+        });
+        const bobToAlice = await insertPost({
+            userId: 'user-bob',
+            email: 'bob@example.com',
+            replyTo: aliceNote,
+        });
+
+        await move('alice@example.com', { to_season_id: 45, to_episode: 8 });
+
+        expect(await row(aliceToBob)).toMatchObject({ episode: 8, reply_to_post_id: null });
+        expect(await row(aliceToAlice)).toMatchObject({ episode: 8, reply_to_post_id: aliceNote });
+        expect(await row(bobToAlice)).toMatchObject({ episode: 7, reply_to_post_id: null });
+        expect(await row(bobNote)).toMatchObject({ episode: 7, body: 'note' });
+    });
+
+    it('carries reactions along, since they key on the note', async () => {
+        const id = await insertPost({ userId: 'user-alice', email: 'alice@example.com' });
+        await env.DB.prepare(
+            "INSERT INTO reactions (post_id, email, emoji, created_at) VALUES (?, 'bob@example.com', '😂', '2026-03-01T20:00:00.000Z')",
+        )
+            .bind(id)
+            .run();
+        await move('alice@example.com', { to_season_id: 46, to_episode: 1 });
+        await req('POST', '/api/watched', { body: { season_id: 46 }, email: 'alice@example.com' });
+        const data = await (
+            await req('GET', '/api/seasons/46/discussion', { email: 'alice@example.com' })
+        ).json();
+        const moved = data.episodes.find((e) => e.episode === 1).posts.find((p) => p.id === id);
+        expect(moved.reactions).toEqual([{ emoji: '😂', count: 1, mine: false, names: ['Bob'] }]);
+    });
+
+    it('succeeds with nothing to move', async () => {
+        const r = await move('alice@example.com', { to_season_id: 46, to_episode: 1 });
+        expect(await r.json()).toEqual({ success: true, moved: 0 });
+    });
+
+    it('refuses to move notes onto the episode they are already on', async () => {
+        const r = await move('alice@example.com', { to_season_id: 45, to_episode: 7 });
+        expect(r.status).toBe(400);
+    });
+
+    it('returns 404 for an unknown target season or an episode past its count', async () => {
+        await insertPost({ userId: 'user-alice', email: 'alice@example.com' });
+        const unknown = await move('alice@example.com', { to_season_id: 999, to_episode: 1 });
+        expect(unknown.status).toBe(404);
+        const past = await move('alice@example.com', { to_season_id: 46, to_episode: 14 });
+        expect(past.status).toBe(404);
+        expect((await past.json()).error).toBe('Show One Season 46 has no episode 14');
+        const { results } = await env.DB.prepare('SELECT episode FROM posts').all();
+        expect(results).toEqual([{ episode: 7 }]);
+    });
+
+    it('returns 400 for a malformed target and 404 for an unknown source episode', async () => {
+        for (const body of [{}, { to_season_id: 46 }, { to_season_id: 46, to_episode: 0 }]) {
+            expect((await move('alice@example.com', body)).status).toBe(400);
+        }
+        const r = await move(
+            'alice@example.com',
+            { to_season_id: 46, to_episode: 1 },
+            '45/episodes/14',
+        );
+        expect(r.status).toBe(404);
+    });
+
+    it('returns 403 with no identity and for a stranger', async () => {
+        const id = await insertPost({ userId: 'user-alice', email: 'alice@example.com' });
+        expect((await move(undefined, { to_season_id: 46, to_episode: 1 })).status).toBe(403);
+        expect(
+            (await move('stranger@example.com', { to_season_id: 46, to_episode: 1 })).status,
+        ).toBe(403);
+        expect((await row(id)).episode).toBe(7);
+    });
+});

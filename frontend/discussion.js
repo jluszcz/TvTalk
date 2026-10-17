@@ -21,7 +21,7 @@ import { sessionOffsetSecs, MAX_OFFSET_ADJUST_SECS } from '../shared/session.js'
 import { PostList } from './post.js';
 import { prefersReducedMotion } from './board.js';
 import { Icon } from './icons.js';
-import { EditSeasonForm } from './manage.js';
+import { EditSeasonForm, MoveNotesDialog } from './manage.js';
 
 const html = htm.bind(h);
 
@@ -318,6 +318,7 @@ export function SeasonView({ seasonId, routeEpisode }) {
                         html`<${EpisodeBoard}
                             key=${ep.episode}
                             ep=${ep}
+                            season=${data.season}
                             meId=${data.me?.id ?? null}
                             serverSkewMs=${serverSkewMs}
                             open=${openEpisode === ep.episode}
@@ -333,6 +334,7 @@ export function SeasonView({ seasonId, routeEpisode }) {
                             onOffsetAdjust=${setOffsetAdjust}
                             onSkip=${setTimerSkip}
                             onStatus=${setStatus}
+                            onMoved=${refreshAfterEdit}
                         />`,
                 )}
             </div>
@@ -344,6 +346,7 @@ export function SeasonView({ seasonId, routeEpisode }) {
 // wrote, plus your own notes, and nothing else until you choose to open it.
 function EpisodeBoard({
     ep,
+    season,
     meId,
     serverSkewMs,
     open,
@@ -358,6 +361,7 @@ function EpisodeBoard({
     onOffsetAdjust,
     onSkip,
     onStatus,
+    onMoved,
 }) {
     const placed = useMemo(() => orderPosts(ep.posts), [ep.posts]);
 
@@ -383,6 +387,9 @@ function EpisodeBoard({
     // is — one open menu per board, by construction — and local rather than in
     // SkipControl so tapping a different episode's control cannot leave two open.
     const [skipMenuOpen, setSkipMenuOpen] = useState(false);
+    // Whether the move dialog is up. Episode-scoped like the menus above: the
+    // dialog moves this board's notes and no other's.
+    const [moving, setMoving] = useState(false);
     // Owned here rather than inside PostForm so tapping Reply can focus the box.
     const inputRef = useRef(null);
 
@@ -437,6 +444,9 @@ function EpisodeBoard({
     const others = ep.authors.filter((a) => !a.mine).map((a) => a.name);
     const skips = skipLabel(ep.statuses, meId);
     const mySkip = ep.statuses?.find((s) => s.user_id === meId) ?? null;
+    // The caller's own notes are serialized even on a locked board, so this
+    // count is exact whether or not the board is readable.
+    const myCount = ep.posts.filter((p) => p.mine).length;
 
     return html`
         <div
@@ -494,6 +504,20 @@ function EpisodeBoard({
                                         </button>`
                                     }
                                     ${
+                                        // Only when there is something of
+                                        // yours here to move: the route
+                                        // moves the caller's notes alone.
+                                        meId &&
+                                        myCount > 0 &&
+                                        html`<button
+                                            class="skip-btn move-btn"
+                                            onClick=${() => setMoving(true)}
+                                        >
+                                            <${Icon} name="move" />
+                                            <span>Move comments</span>
+                                        </button>`
+                                    }
+                                    ${
                                         meId &&
                                         html`<${SkipControl}
                                             mine=${mySkip}
@@ -538,6 +562,19 @@ function EpisodeBoard({
                             html`<div class="hidden-note">
                                 — ${ep.count - ep.posts.length} notes hidden —
                             </div>`
+                        }
+                        ${
+                            moving &&
+                            html`<${MoveNotesDialog}
+                                season=${season}
+                                episode=${ep.episode}
+                                count=${myCount}
+                                onMoved=${async () => {
+                                    await onMoved();
+                                    setMoving(false);
+                                }}
+                                onCancel=${() => setMoving(false)}
+                            />`
                         }
                         ${
                             meId &&

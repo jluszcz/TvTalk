@@ -169,6 +169,27 @@ export function nextSeasonNumber(seasons, showId) {
     );
 }
 
+// One show's seasons in number order — the move dialog's season picker.
+export function seasonsOfShow(seasons, showId) {
+    return seasons.filter((s) => s.show_id === showId).sort((a, b) => a.number - b.number);
+}
+
+// Where the move dialog's pickers land after one of them changes. Picking a
+// show selects its first season; picking a season keeps the chosen episode
+// when the new season has one by that number and falls back to 1 otherwise.
+// Returns the target unchanged when the season it names is not in `seasons`.
+export function moveTarget(seasons, { showId, seasonId, episode }) {
+    const season =
+        seasons.find((s) => s.id === seasonId && s.show_id === showId) ??
+        seasonsOfShow(seasons, showId)[0];
+    if (!season) return { showId, seasonId, episode };
+    return {
+        showId,
+        seasonId: season.id,
+        episode: episode >= 1 && episode <= season.episode_count ? episode : 1,
+    };
+}
+
 // The episode numbers of a season, 1..count.
 export function episodeNumbers(count) {
     return Array.from({ length: count || 0 }, (_, i) => i + 1);

@@ -290,6 +290,27 @@ of the root `AGENTS.md` so it loads only when working on these files.
   Deliberately width-driven rather than gated on the `640px` breakpoint — the
   controls fit on one line well below it, and a breakpoint would stack them
   where they didn't need stacking.
+- **Move comments** sits between the reveal button and the skip control in that
+  same row, and only renders when the caller has a note on the episode (their
+  own notes are serialized even on a locked board, so the count is exact
+  either way). It borrows `.skip-btn` for its look, since it is the same kind
+  of secondary control as Skip. It opens `MoveNotesDialog` (`manage.js`),
+  which is the app's only native modal `<dialog>`: `showModal()` supplies the
+  focus trap, Escape, and the backdrop, where a move — unlike a menu — is a
+  decision to make with the board held still behind it. Escape's `cancel`
+  event and a backdrop click both route through `canCancel()`, so the dialog
+  cannot be dismissed while a move is in flight; a `close` the browser forces
+  without a cancelable `cancel` (Chrome's second Escape) is mirrored into the
+  parent's state, or the dialog is reopened if a move is in flight. Shows
+  with no seasons are left out of the show picker. The dialog fetches
+  `/api/board` on open for its show and season pickers, which start on the
+  episode the notes are already on; Move stays disabled until the target
+  differs. Picking a show selects its lowest-numbered season, and picking a
+  season keeps the episode number when the season has one (`moveTarget`,
+  `utils.js`). Not optimistic, like the add and edit forms: an error shows
+  inline, and success refetches the view through the refresh guard and closes
+  the dialog. A target show or season has to exist already; the dialog
+  deliberately offers no way to add one.
 - The skip control (`SkipControl` in `discussion.js`) sits between the reveal
   button and the timer in that same row. It is a menu rather than a toggle
   because a skip carries a required reason, so there is no single state to

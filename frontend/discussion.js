@@ -240,6 +240,15 @@ export function SeasonView({ seasonId, routeEpisode }) {
             }),
         );
 
+    // The move has committed by the time this runs, so a plain refetch is
+    // enough: starting a fetch discards any older one still in flight, which
+    // may have read the notes where they were. Not bracketed in begin/endMutation
+    // like refreshAfterEdit below, which would defer this fetch and resolve
+    // before the view updates, closing the dialog over notes that have not moved
+    // yet. A failure here is a refetch failure, not a failed move, so it goes on
+    // the banner rather than in the dialog, which closes either way.
+    const refreshAfterMove = () => refresh().catch((err) => setError(err.message));
+
     // Through the guard, like every other mutation here, so an in-flight focus
     // refresh can't overwrite values EditSeasonForm just saved with a response
     // fetched before the save. Shared by onSaved and onChanged below: onSaved
@@ -334,7 +343,7 @@ export function SeasonView({ seasonId, routeEpisode }) {
                             onOffsetAdjust=${setOffsetAdjust}
                             onSkip=${setTimerSkip}
                             onStatus=${setStatus}
-                            onMoved=${refreshAfterEdit}
+                            onMoved=${refreshAfterMove}
                         />`,
                 )}
             </div>

@@ -308,8 +308,7 @@ of the root `AGENTS.md` so it loads only when working on these files.
   differs. Picking a show selects its lowest-numbered season, and picking a
   season keeps the episode number when the season has one (`moveTarget`,
   `utils.js`). Not optimistic, like the add and edit forms: an error shows
-  inline, and success refetches the view through the refresh guard and closes
-  the dialog. A target show or season has to exist already; the dialog
+  inline, and success waits for a plain refetch (`refreshAfterMove`) before closing the dialog — deliberately outside `beginMutation`/`endMutation`, which would queue the fetch and close the dialog over notes that had not moved yet; a refetch failure goes on the page banner, since the move itself succeeded. A target show or season has to exist already; the dialog
   deliberately offers no way to add one.
 - The skip control (`SkipControl` in `discussion.js`) sits between the reveal
   button and the timer in that same row. It is a menu rather than a toggle

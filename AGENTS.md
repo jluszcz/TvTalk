@@ -49,7 +49,7 @@ D1 (SQLite) database and a static Preact frontend.
     - `insert-test-post.py` — inserts one fake discussion post (lorem ipsum body, relative or future timestamp, random or named roster author) directly into the local D1 SQLite file under `.wrangler/state/`, for exercising the discussion UI without going through the app. Stdlib-only Python; reads no network and no wrangler CLI, so it cannot reach production. Run repeatedly / in a shell loop for more than one post. With several local database files (a wrangler upgrade can change the file's name and leave the old one behind), it writes to the newest-created and names the rest on stderr; `--db` overrides
 - `roster.sql` — real roster: `users` (names) + `user_emails` (emails), with generic `user-N` ids (gitignored; template in `roster.example.sql`)
 - `test/` — Tests
-    - `test/worker/` — Worker API tests (`@cloudflare/vitest-pool-workers`)
+    - `test/worker/` — Worker API tests (`@cloudflare/vitest-plugin`)
     - `test/frontend/` — Frontend unit tests (logic only, no DOM)
 - `build.js` — esbuild bundler for the frontend (one-shot + `--watch`)
 - `generate-emoji-data.js` — regenerates `frontend/emoji-data.json` from the `unicode-emoji-json` devDependency (`npm run emoji:generate`). Deliberately **not** part of the build: the output is committed, and Unicode ships a new emoji set about once a year. It writes the set unfiltered — which of it is a usable reaction is an engine-dependent question decided at runtime, not baked in from whichever machine ran the generator

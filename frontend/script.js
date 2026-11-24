@@ -3,7 +3,8 @@ import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import htm from 'htm';
 import { setWatched, clearsCurrentlyWatching } from './utils.js';
 import { api } from './api.js';
-import { useTheme, useRefreshGuard, useRefreshOnFocus, useHashRoute } from './hooks.js';
+import { useTheme, useRefreshGuard, useRefreshOnFocus, useRoute } from './hooks.js';
+import { withSlugs, resolveRoute, showPath, targetPath } from './routes.js';
 import { Header, Board } from './board.js';
 import { SeasonView } from './discussion.js';
 
@@ -17,12 +18,17 @@ function App() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const { theme, toggle: toggleTheme } = useTheme();
-    const { seasonId: routeSeasonId, episode: routeEpisode } = useHashRoute();
+    const { route, setRoute, navigate } = useRoute();
+
+    // The shows as of the last applied board, for `chooseShow`: a caller that
+    // awaited a refetch holds a callback from a render before it.
+    const showsRef = useRef(shows);
 
     const fetchBoard = useCallback(() => api('/api/board'), []);
     const applyBoard = useCallback((board) => {
         setUsers(board.users);
-        setShows(board.shows);
+        showsRef.current = withSlugs(board.shows);
+        setShows(showsRef.current);
         setSeasons(board.seasons);
         setMe(board.me);
     }, []);
@@ -41,18 +47,76 @@ function App() {
         })();
     }, [refresh]);
 
+    // Resolved once per route and then held by id: a refetch that brings in a
+    // rename must not turn the open season into an address that names nothing,
+    // which would unmount it along with whatever was being typed.
+    const resolvedRef = useRef({ route: null, target: null });
+    if (resolvedRef.current.route !== route || !resolvedRef.current.target) {
+        resolvedRef.current = { route, target: resolveRoute(route, shows, seasons) };
+    }
+    const target = loading ? null : resolvedRef.current.target;
+    const routeSeasonId = target?.seasonId ?? null;
+    const routeShowId = target?.showId ?? null;
+
+    // A link can name something added since the board was last fetched, so an
+    // address that does not resolve gets one refetch before it is called missing.
+    const [missingRoute, setMissingRoute] = useState(null);
+    const unresolved = !loading && !target;
+    useEffect(() => {
+        if (!unresolved) return undefined;
+        // A slow response for an address since left must not answer for this one.
+        let left = false;
+        refresh()
+            .then(
+                (applied) => applied && setError(null),
+                (err) => setError(err.message),
+            )
+            .finally(() => {
+                if (!left) setMissingRoute(route);
+            });
+        return () => {
+            left = true;
+        };
+    }, [unresolved, route, refresh]);
+
+    // Keeps the address bar on the one readable address for what is on screen —
+    // through a rename, a different case, an id-based link, or an episode being
+    // opened. Replaces rather than pushes, so Back leaves a season instead of
+    // stepping through every episode opened in it.
+    useEffect(() => {
+        const path = target && targetPath(target, shows, seasons);
+        if (path && path !== window.location.pathname + window.location.hash) {
+            window.history.replaceState(null, '', path);
+        }
+    }, [target, shows, seasons]);
+
+    // By id, which the effect above turns into the address.
+    const openEpisode = useCallback(
+        (episode) => setRoute({ seasonId: routeSeasonId, episode, byHand: true }),
+        [setRoute, routeSeasonId],
+    );
+
+    const chooseShow = useCallback(
+        (showId) => navigate(showPath(showsRef.current.find((s) => s.id === showId))),
+        [navigate],
+    );
+
+    // The board a season was opened from, so its back link returns to the same
+    // filter. A season arrived at directly goes back to all shows.
+    const boardShowIdRef = useRef(null);
+    if (target && routeSeasonId == null) boardShowIdRef.current = routeShowId;
+
     // A season's post-count badge goes stale the moment you post from inside it,
     // since the season view fetches its own discussion data rather than /api/board.
-    // Refetch the board on the way back out. Seeded with the initial route (rather
-    // than null) so mounting straight into a season view — or never opening one at
-    // all — doesn't trigger a redundant fetch on top of the mount effect above.
+    // Refetch the board on the way back out — unless the way out is an address
+    // that does not resolve, which the effect above is already refetching for.
     const prevRouteSeasonId = useRef(routeSeasonId);
     useEffect(() => {
-        if (prevRouteSeasonId.current != null && routeSeasonId == null) {
+        if (prevRouteSeasonId.current != null && routeSeasonId == null && !unresolved) {
             refresh().catch((err) => setError(err.message));
         }
         prevRouteSeasonId.current = routeSeasonId;
-    }, [routeSeasonId, refresh]);
+    }, [routeSeasonId, unresolved, refresh]);
 
     const meId = me?.id ?? null;
 
@@ -190,7 +254,12 @@ function App() {
 
     return html`
         <div class="container">
-            <${Header} theme=${theme} onToggleTheme=${toggleTheme} showFeed=${Boolean(meId)} />
+            <${Header}
+                theme=${theme}
+                onToggleTheme=${toggleTheme}
+                shows=${shows}
+                showFeed=${Boolean(meId)}
+            />
             <main class="app">
                 ${error && html`<div class="error">${error}</div>`}
                 ${loading && html`<div class="loading">Loading…</div>`}
@@ -216,17 +285,31 @@ function App() {
                         </div>
                     `
                 }
+                ${unresolved && missingRoute !== route && html`<div class="loading">Loading…</div>`}
+                ${
+                    unresolved &&
+                    missingRoute === route &&
+                    !error &&
+                    html`<div class="notice">
+                        There's no show or season at this address. <a href="/">Go to the board</a>
+                    </div>`
+                }
                 ${
                     !loading &&
                     routeSeasonId != null &&
                     html`<${SeasonView}
                         key=${routeSeasonId}
                         seasonId=${routeSeasonId}
-                        routeEpisode=${routeEpisode}
+                        route=${route}
+                        routeEpisode=${target.episode}
+                        backHref=${showPath(shows.find((s) => s.id === boardShowIdRef.current))}
+                        onOpenEpisode=${openEpisode}
+                        onEdited=${refreshBoard}
                     />`
                 }
                 ${
                     !loading &&
+                    target &&
                     routeSeasonId == null &&
                     users.length > 0 &&
                     html`
@@ -235,6 +318,8 @@ function App() {
                             shows=${shows}
                             seasons=${seasons}
                             meId=${meId}
+                            showId=${routeShowId}
+                            onChooseShow=${chooseShow}
                             onToggle=${toggle}
                             onSetCurrentlyWatching=${setCurrentlyWatching}
                             onRefresh=${refreshBoard}

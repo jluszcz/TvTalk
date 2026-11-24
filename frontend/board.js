@@ -12,8 +12,8 @@ import {
     selectableSeasons,
     filterByShow,
     collapseShows,
-    resolveShowFilter,
 } from './utils.js';
+import { seasonPath } from './routes.js';
 import { Icon } from './icons.js';
 import { FeedBell } from './feed.js';
 import { AddSeasonForm } from './manage.js';
@@ -29,7 +29,7 @@ const FLASH_MS = 2500;
 export const prefersReducedMotion = () =>
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-export function Header({ theme, onToggleTheme, showFeed }) {
+export function Header({ theme, onToggleTheme, shows, showFeed }) {
     // The toggle shows the theme a click switches *to*, so the sun appears
     // only while dark is in effect and the moon only while light is. This is
     // the one remaining place a component needs to know the theme to draw an
@@ -45,7 +45,7 @@ export function Header({ theme, onToggleTheme, showFeed }) {
                     // Only for someone on the roster: every feed route 403s for
                     // anyone else, so the bell would be a control that can only
                     // fail.
-                    showFeed ? html`<${FeedBell} />` : null
+                    showFeed ? html`<${FeedBell} shows=${shows} />` : null
                 }
                 <button class="theme-btn" title=${title} onClick=${onToggleTheme}>
                     <${Icon} name=${dark ? 'sun' : 'moon'} />
@@ -67,7 +67,7 @@ function SeasonRow({ season, show, users, meId, fullyWatched, flash, onToggle })
         <tr id=${`season-row-${season.id}`} class=${rowClass}>
             <td class="season-cell">
                 <div class="season-cell-row">
-                    <a href=${`#/season/${season.id}`} aria-label=${label}
+                    <a href=${seasonPath(show, season.number)} aria-label=${label}
                         >${showName ? html`<span class="season-show">${showName}</span>` : null}<span
                             class="season-num"
                             >${number}</span
@@ -274,47 +274,24 @@ function NowWatching({ users, shows, seasons, meId, onSetCurrentlyWatching, onJu
     `;
 }
 
-// Where the board's show filter is remembered. Per tab session: it has to
-// outlive the Board, which unmounts while a season is open, but opening the app
-// afresh starts on all shows rather than inside the last one visited. Storage
-// failing (private mode, blocked site data) only means it resets sooner.
-const SHOW_FILTER_KEY = 'showFilter';
-
-function readSavedShowFilter() {
-    try {
-        return sessionStorage.getItem(SHOW_FILTER_KEY);
-    } catch {
-        return null;
-    }
-}
-
-function saveShowFilter(showId) {
-    try {
-        if (showId == null) sessionStorage.removeItem(SHOW_FILTER_KEY);
-        else sessionStorage.setItem(SHOW_FILTER_KEY, String(showId));
-    } catch {
-        // Nothing to do: the filter still applies for this page view.
-    }
-}
-
 export function Board({
     users,
     shows,
     seasons,
     meId,
+    showId,
+    onChooseShow,
     onToggle,
     onSetCurrentlyWatching,
     onRefresh,
 }) {
     const [sortMode, setSortMode] = useState('season');
-    const [savedFilter, setSavedFilter] = useState(readSavedShowFilter);
     const [flashId, setFlashId] = useState(null);
     const [adding, setAdding] = useState(false);
     // A NowWatching jump to a season folded inside a show row: the jump first
     // opens that show, and this carries the season over to the next render,
     // where its row exists to scroll to.
     const [pendingJump, setPendingJump] = useState(null);
-    const showId = resolveShowFilter(savedFilter, shows);
     const shownShows = useMemo(
         () => (showId == null ? shows : shows.filter((s) => s.id === showId)),
         [shows, showId],
@@ -330,12 +307,6 @@ export function Board({
             ? sortBySeenCount(rows, userCount, shows)
             : sortSeasons(rows, userCount, shows);
     }, [shownSeasons, showId, userCount, shows, sortMode]);
-
-    const chooseShow = (value) => {
-        const next = value ? Number(value) : null;
-        saveShowFilter(next);
-        setSavedFilter(next == null ? null : String(next));
-    };
 
     // Show the current user's column left-most.
     const orderedUsers = useMemo(
@@ -366,7 +337,7 @@ export function Board({
         if (!row) {
             const season = seasons.find((s) => s.id === seasonId);
             if (openShow && season && showId == null) {
-                chooseShow(season.show_id);
+                onChooseShow(season.show_id);
                 setPendingJump(seasonId);
             }
             return;
@@ -395,7 +366,8 @@ export function Board({
                     <select
                         class="show-filter-select"
                         value=${showId ?? ''}
-                        onChange=${(e) => chooseShow(e.target.value)}
+                        onChange=${(e) =>
+                            onChooseShow(e.target.value ? Number(e.target.value) : null)}
                     >
                         <option value="">All shows</option>
                         ${shows.map((s) => html`<option key=${s.id} value=${s.id}>${s.name}</option>`)}
@@ -433,7 +405,7 @@ export function Board({
                     seasons=${seasons}
                     defaultShowId=${showId}
                     onChanged=${onRefresh}
-                    onDone=${(addedShowId) => {
+                    onDone=${async (addedShowId) => {
                         setAdding(false);
                         // An active filter on some other show would hide the row
                         // just added, and so would "All shows" once the show has
@@ -443,15 +415,18 @@ export function Board({
                             showId == null
                                 ? seasons.some((s) => s.show_id === addedShowId)
                                 : showId !== addedShowId;
-                        if (hidden) chooseShow(addedShowId);
-                        onRefresh();
+                        // After the refetch: a show has no address until the board has it.
+                        const from = window.location.pathname;
+                        await onRefresh();
+                        // Unless the user has gone somewhere else meanwhile.
+                        if (hidden && window.location.pathname === from) onChooseShow(addedShowId);
                     }}
                     onCancel=${() => setAdding(false)}
                 />`
             }
             ${
                 showId != null &&
-                html`<button class="back-link back-btn" onClick=${() => chooseShow(null)}>
+                html`<button class="back-link back-btn" onClick=${() => onChooseShow(null)}>
                     ← All shows
                 </button>`
             }
@@ -496,7 +471,7 @@ export function Board({
                                                 users=${orderedUsers}
                                                 meId=${meId}
                                                 fullyWatched=${isFullyWatched(s, userCount)}
-                                                onOpen=${chooseShow}
+                                                onOpen=${onChooseShow}
                                             />`
                                           : html`<${SeasonRow}
                                                 key=${s.id}

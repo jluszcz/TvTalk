@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { createRefreshGuard } from './refresh-guard.js';
 import { createSubmitGuard } from './submit-guard.js';
-import { parseHashRoute } from './utils.js';
+import { parseRoute } from './routes.js';
 
 // The theme in effect before anything has been rendered: a manual choice if one
 // was stored, otherwise whatever the OS asks for. Shared by useTheme's initial
@@ -106,28 +106,46 @@ export function useSubmitGuard() {
     return { busy, run, canCancel };
 }
 
-// The app has exactly one route beyond the board, so a hash and a listener beat
-// a router library. A hash also means Back returns to the board, a reload keeps
-// your place, and a season is a link you can paste into chat.
-export function useHashRoute() {
-    const [route, setRoute] = useState(() => parseHashRoute(window.location.hash));
+// The current route, and the two ways to change it. The routes themselves are
+// routes.js; this is the History API around them, small enough that a router
+// library would cost more than it saves.
+//
+// Links are ordinary hrefs, so copy-link, middle-click, and a modified click all
+// work; a plain click is intercepted here and becomes a pushState instead of a
+// page load.
+export function useRoute() {
+    const [route, setRoute] = useState(() => parseRoute(window.location));
 
-    useEffect(() => {
-        const handler = () =>
-            setRoute((current) => {
-                const next = parseHashRoute(window.location.hash);
-                // Returning the same object lets Preact bail out. Without this
-                // every hashchange — including one that lands on the hash we
-                // are already on — would be a new object and a re-render.
-                return next.seasonId === current.seasonId && next.episode === current.episode
-                    ? current
-                    : next;
-            });
-        window.addEventListener('hashchange', handler);
-        return () => window.removeEventListener('hashchange', handler);
+    const navigate = useCallback((path) => {
+        window.history.pushState(null, '', path);
+        setRoute(parseRoute(window.location));
     }, []);
 
-    return route;
+    // Back and Forward, and a hash edited by hand.
+    useEffect(() => {
+        const handler = () => setRoute(parseRoute(window.location));
+        window.addEventListener('popstate', handler);
+        return () => window.removeEventListener('popstate', handler);
+    }, []);
+
+    useEffect(() => {
+        const handler = (e) => {
+            if (e.defaultPrevented || e.button !== 0) return;
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            const link = e.target.closest?.('a[href]');
+            if (!link || link.target || link.origin !== window.location.origin) return;
+            e.preventDefault();
+            const path = link.pathname + link.hash;
+            // A link to where you already are adds nothing to go Back to, but it is
+            // still an arrival: the season view scrolls to the episode it names.
+            if (path !== window.location.pathname + window.location.hash) navigate(path);
+            else setRoute(parseRoute(window.location));
+        };
+        document.addEventListener('click', handler);
+        return () => document.removeEventListener('click', handler);
+    }, [navigate]);
+
+    return { route, setRoute, navigate };
 }
 
 // Refetch when the tab regains focus, so changes other people made while this

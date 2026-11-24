@@ -32,6 +32,11 @@ head_sampling_rate = 1
 [assets]
 directory = "public"
 binding = "ASSETS"
+# Every path the app routes itself (/Survivor/51/10) is served the app shell.
+# The API is named explicitly because the shell would otherwise answer for it
+# when a browser navigates straight to an /api URL.
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
 
 [[d1_databases]]
 binding = "DB"

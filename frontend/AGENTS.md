@@ -9,16 +9,9 @@ of the root `AGENTS.md` so it loads only when working on these files.
     - `sortBySeenCount` ("Seen Count" mode) — sinks fully-watched seasons to the bottom, then sorts by ascending watcher count, then show name, then season number.
       Both functions live in `utils.js` and are shared with tests.
 - A "Show" `<select>` beside the sort buttons filters the board to one show or
-  "All shows". `readSavedShowFilter`/`saveShowFilter` in `board.js` own the
-  `showFilter` sessionStorage key: the filter survives a reload and a trip into
-  a season, which unmounts the board, but a fresh tab starts on "All shows".
-  Access is wrapped in try/catch so a browser that refuses storage (private
-  mode, blocked site data) just resets the filter sooner. The stored value is a show id as a string;
-  `resolveShowFilter` (`utils.js`) only validates a saved value against the
-  shows currently on the board — it does not read or write the key itself —
-  treating anything that isn't the id of a show on the board — unset,
-  malformed, or naming a show since removed from this browser's view — as
-  "All shows" rather than throwing or filtering to nothing. The filter
+  "All shows". The filter is the route (`/Survivor`), not stored state: `App`
+  passes `showId` down and the board calls `onChooseShow`, which navigates, so
+  Back undoes it and opening the app at `/` always starts on all shows. It
   narrows both the season rows (`filterByShow`) and the `NowWatching` strip's
   shown shows.
 - On "All shows", every show with more than one season collapses into one
@@ -179,10 +172,9 @@ of the root `AGENTS.md` so it loads only when working on these files.
   `@media (hover: hover)`, with `.sort-btn:hover` scoped `:not(.active)` so
   hovering the selected sort button keeps its style. No DOM test suite
   exists; this layout is verified with an ad-hoc Playwright script, not CI.
-- The hash route `#/season/N` (`useHashRoute` in `hooks.js`) swaps the board for
-  `SeasonView`, that season's per-episode discussion boards — a hash beats a
-  router library for the app's one extra route, and it also makes Back work,
-  survives a reload, and gives each season a link you can paste into chat.
+- The route (`routes.js` + `useRoute` in `hooks.js`): `/Survivor` is the board
+  filtered to a show, `/Survivor/51` swaps in `SeasonView`, and `/Survivor/51/10`
+  opens an episode in it. See the routing notes further down.
 - `SeasonView` fetches only `/api/seasons/:season_id/discussion` — the response
   already names each post's author, so there's no separate `/api/board` fetch
   or roster to merge here, and the season view is a single request.
@@ -202,7 +194,7 @@ of the root `AGENTS.md` so it loads only when working on these files.
   mis-tap is undone by tapping the same place again. Marking a whole season
   watched opens every one of its episodes and offers no Hide, since there is
   no reveal to take back.
-- The boards are an accordion: `SeasonView` owns a single `openEpisode` (an
+- The boards are an accordion: the route names a single open episode (an
   episode number or `null`) and `EpisodeBoard` is controlled via `open` /
   `onToggle`, so expanding one collapses the rest rather than burying it in a
   tall stack. Keying on the episode number rather than component identity means
@@ -804,15 +796,24 @@ of the root `AGENTS.md` so it loads only when working on these files.
       `null` snapshot (nothing has ever loaded) reads "Loading…", not
       "Nothing new yet." — that message is only true once a response has
       actually come back with no events in it.
-- The hash route (`parseHashRoute` in `utils.js`, wired by `useHashRoute`)
-  understands `#/season/45` and `#/season/45/episode/3`. The parse is a pure
-  function so the regex is testable — the same split `refresh-guard.js` and
-  `submit-guard.js` draw. `useHashRoute` returns the _same object_ when a
-  hashchange leaves both values alone, so Preact can bail out instead of
-  re-rendering on every hash event.
-    - `SeasonView` seeds `openEpisode` from `routeEpisode` in an effect rather
-      than a `useState` initialiser, because the view is keyed on the season:
-      following a second feed link within the same season does not remount.
+- Routing. `routes.js` is pure and tested; `useRoute` (`hooks.js`) is the History
+  API around it and turns plain clicks on same-origin links into `pushState`.
+    - A URL names a show by slug and a season by number, never by id. `withSlugs`
+      assigns slugs when the board is applied; a collision or a reserved first
+      segment gets `~id`. Renaming a show changes its address and old links to
+      it do not resolve. `#/season/<id>/episode/<n>` resolves too and is rewritten
+      to the readable address; a feed line uses it for a show the board has not
+      fetched yet.
+    - `App` resolves a route against the board **once** and then holds the ids,
+      so a rename arriving in a refetch cannot unmount an open season and the
+      text being typed in it. An unresolvable route gets one refetch (a link can
+      be newer than the board) before the not-found notice.
+    - An effect in `App` replaces the address with `targetPath`, so the address
+      bar always holds the link to what is on screen. The route's episode _is_
+      the open board; `SeasonView` keeps no copy. Opening one replaces rather
+      than pushes, so Back leaves the season.
+    - Asset URLs in `index.html` must be absolute: the shell is served at every
+      depth (`not_found_handling` in `wrangler.toml`).
     - **Arriving from a feed line expands the board and must never reveal it.**
       Expanding and revealing are separate handlers (`onToggle` vs `onReveal`)
       and have to stay that way — Hide discussion re-locks the board but
@@ -822,7 +823,7 @@ of the root `AGENTS.md` so it loads only when working on these files.
       destination. There is no DOM suite to assert this, so a reviewer should
       check that `reveal` in `discussion.js` still has exactly one call site.
     - Arrival also scrolls the opened episode's card into view — expanding it
-      alone leaves a hash navigation sitting at the top of the document with
+      alone leaves the navigation sitting at the top of the document with
       the board it just opened potentially hundreds of pixels below the fold,
       which shows nothing happened. `EpisodeBoard` carries
       `id="episode-card-<episode>"` for this to target, and the effect
@@ -831,14 +832,15 @@ of the root `AGENTS.md` so it loads only when working on these files.
       via `prefersReducedMotion`, exported from `board.js` rather than
       duplicated. **Whether to jump on a given render is
       `shouldScrollToEpisode` (`utils.js`), not a condition inlined in the
-      effect** — the same rule-vs-wiring split `parseHashRoute` and
+      effect** — the same rule-vs-wiring split `routes.js` and
       `refresh-guard.js` draw, and what makes this testable at all. The effect
-      watches one dep per input that rule reads — `routeEpisode`,
-      `openEpisode`, `data`, `loading` — and the ref is what stops those same
-      deps from re-scrolling the page on every later refetch (focus, a
-      mutation's own refresh) or when a board is collapsed and reopened by
-      hand: the jump fires once per distinct `routeEpisode`. Both of the
-      rule's non-obvious conditions are bugs that shipped:
+      watches `route` and one dep per input that rule reads — `routeEpisode`,
+      `data`, `loading` — and the ref is what stops those same deps from
+      re-scrolling the page on every later refetch (focus, a mutation's own
+      refresh). Each new `route` object resets the ref, so a link to the episode
+      already open scrolls to it; a `byHand` route (from `toggleEpisode`) marks
+      it scrolled instead, so a board opened by hand does not jump. The
+      rule's non-obvious condition is a bug that shipped:
         - **It waits on `loading`, not on `data`.** `setData` and
           `setLoading(false)` land in two separate renders (the fetch applies
           the response, its `finally` clears the flag), and `SeasonView`
@@ -847,14 +849,6 @@ of the root `AGENTS.md` so it loads only when working on these files.
           all, found nothing, and never ran again, because both of its deps
           had already stopped changing. That was the bug: arriving from a feed
           line expanded the right board and left the page at the top.
-        - **It also waits for `openEpisode` to equal `routeEpisode`.** The
-          effect that expands the board and the one that jumps to it run in
-          the same commit, so on the render a new route arrives on, the DOM
-          still has the _previous_ episode expanded and this one collapsed.
-          `scrollIntoView` fixes its pixel target once, and the collapse that
-          follows slides the destination out from under it — following a
-          second feed line from inside a season you were already in landed a
-          few hundred pixels off.
 - The manifest link in `index.html` carries `crossorigin="use-credentials"`,
   which is load-bearing behind Cloudflare Access: a manifest is fetched without
   credentials by default, so Access would redirect it to a login page, the

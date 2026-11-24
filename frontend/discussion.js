@@ -25,50 +25,48 @@ import { EditSeasonForm, MoveNotesDialog } from './manage.js';
 
 const html = htm.bind(h);
 
-export function SeasonView({ seasonId, routeEpisode }) {
+export function SeasonView({ seasonId, route, routeEpisode, backHref, onOpenEpisode, onEdited }) {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    // Which episode's board is expanded, or null for none. Held here rather than
-    // per-board so opening one closes the rest: the boards are a tall stack, and
-    // leaving them all open buries the one you just opened.
-    const [openEpisode, setOpenEpisode] = useState(null);
     // Whether the edit-season form is showing in place of the Edit button.
     const [editing, setEditing] = useState(false);
 
-    // A feed line links straight at an episode, so the route can name one. An
-    // effect rather than a useState seed because SeasonView is keyed on the
-    // season: following a second link within the same season does not remount,
-    // so an initial value would never re-run.
+    // The route's episode is the expanded board, or null for none, so the address
+    // bar always links to what is on screen. A single one, so opening a board
+    // closes the rest: they are a tall stack, and leaving them all open buries
+    // the one you just opened.
     //
-    // It must NOT reveal. Expanding a board and revealing it are separate
-    // actions here (onToggle vs onReveal) and have to stay that way — Hide
-    // discussion can re-lock the board, but not unsee what it showed, so
-    // spending someone's reveal on a tap they made in a header panel is not
-    // something they can undo. Landing on a
-    // locked episode shows the locked board and its Reveal button, which is the
-    // right destination.
-    useEffect(() => {
-        if (routeEpisode != null) setOpenEpisode(routeEpisode);
-    }, [routeEpisode]);
+    // Arriving at an episode must NOT reveal it. Expanding a board and revealing
+    // it are separate actions here (onToggle vs onReveal) and have to stay that
+    // way — Hide discussion can re-lock the board, but not unsee what it showed,
+    // so spending someone's reveal on a tap they made in a header panel is not
+    // something they can undo. Landing on a locked episode shows the locked board
+    // and its Reveal button, which is the right destination.
 
     // A feed line's whole point is to land you on the episode it names, not
-    // merely expand its board off-screen: a hash navigation lands at the top
+    // merely expand its board off-screen: navigation lands at the top
     // of the document, and the opened card can sit hundreds of pixels below
     // the fold with nothing to show anything happened. Mirrors NowWatching's
     // jump in board.js, including its prefers-reduced-motion check.
     //
     // When to jump is `shouldScrollToEpisode` (utils.js), which is where each of
     // its conditions is explained and tested; this is the wiring. The deps are
-    // every input that rule reads — `openEpisode` and `loading` included, since
-    // the commit that gets a card rendered and expanded is one or two renders
-    // later than the one that sets the route, and the effect has to run again on
-    // it rather than measuring a document that has no cards in it yet.
+    // every input that rule reads — `loading` included, since the cards do not
+    // exist until the render that clears it.
     const scrolledEpisodeRef = useRef(null);
+
+    // Every link followed is its own arrival, even to the episode already open,
+    // so it clears the mark the jump below would otherwise stop at. A board
+    // opened by hand is not an arrival: it is already under the finger. Declared
+    // before the jump so it runs first in the same commit.
+    useEffect(() => {
+        scrolledEpisodeRef.current = route.byHand ? routeEpisode : null;
+    }, [route]);
+
     useEffect(() => {
         const jump = shouldScrollToEpisode({
             routeEpisode,
-            openEpisode,
             ready: !loading && Boolean(data),
             scrolled: scrolledEpisodeRef.current,
         });
@@ -80,7 +78,9 @@ export function SeasonView({ seasonId, routeEpisode }) {
             behavior: prefersReducedMotion() ? 'auto' : 'smooth',
         });
         scrolledEpisodeRef.current = routeEpisode;
-    }, [routeEpisode, openEpisode, data, loading]);
+    }, [route, routeEpisode, data, loading]);
+
+    const toggleEpisode = (episode) => onOpenEpisode(routeEpisode === episode ? null : episode);
 
     // One request: the discussion response names each note's author itself, so
     // there is no roster to fetch and merge here.
@@ -261,6 +261,9 @@ export function SeasonView({ seasonId, routeEpisode }) {
         } finally {
             endMutation();
         }
+        // The board too, whose copy of the names is what the address is made of.
+        // Not awaited: it has its own guard, and must not hold the form open.
+        onEdited();
     };
 
     if (loading) return html`<div class="loading">Loading…</div>`;
@@ -281,7 +284,7 @@ export function SeasonView({ seasonId, routeEpisode }) {
 
     return html`
         <div class="season-view">
-            <a class="back-link" href="#/">← Board</a>
+            <a class="back-link" href=${backHref}>← Board</a>
             ${error && html`<div class="error">${error}</div>`}
             <div class="season-view-head">
                 <h2 class="season-view-title">${seasonLabel(data.season, data.season.show)}</h2>
@@ -330,9 +333,8 @@ export function SeasonView({ seasonId, routeEpisode }) {
                             season=${data.season}
                             meId=${data.me?.id ?? null}
                             serverSkewMs=${serverSkewMs}
-                            open=${openEpisode === ep.episode}
-                            onToggle=${() =>
-                                setOpenEpisode((cur) => (cur === ep.episode ? null : ep.episode))}
+                            open=${routeEpisode === ep.episode}
+                            onToggle=${() => toggleEpisode(ep.episode)}
                             onReveal=${reveal}
                             onHide=${hide}
                             onPost=${addPost}

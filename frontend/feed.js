@@ -4,9 +4,19 @@ import htm from 'htm';
 import { api } from './api.js';
 import { useRefreshGuard, useRefreshOnFocus } from './hooks.js';
 import { relativeTime, feedLine } from './utils.js';
+import { seasonPath } from './routes.js';
 import { Icon } from './icons.js';
 
 const html = htm.bind(h);
+
+// A feed line can name a show added or renamed since the board was fetched, which
+// has no slug here yet, so it falls back to the id-based address.
+function eventPath(event, shows) {
+    const show = shows.find((s) => s.name === event.show_name);
+    return show
+        ? seasonPath(show, event.season_number, event.episode)
+        : `/#/season/${event.season_id}/episode/${event.episode}`;
+}
 
 // The panel: the scrim, the list, and the phone layout's close button. Split
 // out of FeedBell so its Escape listener and its scrim are subscribed only
@@ -17,7 +27,7 @@ const html = htm.bind(h);
 // bell; `onClose` (choosing a feed line) does not, matching PostMenu's items —
 // a feed line navigates away, so there is nowhere for focus to usefully return
 // to.
-function FeedPanel({ data, error, onClose, onDismiss }) {
+function FeedPanel({ data, shows, error, onClose, onDismiss }) {
     const panelRef = useRef(null);
 
     useEffect(() => {
@@ -106,7 +116,7 @@ function FeedPanel({ data, error, onClose, onDismiss }) {
                                                   class=${
                                                       'feed-item' + (event.unread ? ' unread' : '')
                                                   }
-                                                  href=${`#/season/${event.season_id}/episode/${event.episode}`}
+                                                  href=${eventPath(event, shows)}
                                                   onClick=${onClose}
                                               >
                                                   <span class="feed-text">${feedLine(event)}</span>
@@ -129,7 +139,7 @@ function FeedPanel({ data, error, onClose, onDismiss }) {
 // Fetches through useRefreshGuard like every other fetch in the app, so a slow
 // response cannot overwrite a newer one, and refetches on focus so the badge is
 // right after the tab has been in the background.
-export function FeedBell() {
+export function FeedBell({ shows }) {
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
     const [open, setOpen] = useState(false);
@@ -237,6 +247,7 @@ export function FeedBell() {
                 open &&
                 html`<${FeedPanel}
                     data=${data}
+                    shows=${shows}
                     error=${error}
                     onClose=${close}
                     onDismiss=${dismiss}

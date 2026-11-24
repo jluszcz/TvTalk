@@ -133,15 +133,6 @@ export function collapseShows(seasons) {
     );
 }
 
-// A saved filter comes back from localStorage as a string, or not at all, and
-// may name a show that has since been renamed away or never synced to this
-// browser. Anything that isn't a current show's id is "all shows".
-export function resolveShowFilter(saved, shows) {
-    if (typeof saved !== 'string' || !/^[1-9]\d*$/.test(saved)) return null;
-    const id = Number(saved);
-    return shows.some((s) => s.id === id) ? id : null;
-}
-
 // The seasons of one show you can pick as currently watching: the ones your
 // column hasn't watched. Does not mutate the input.
 export function selectableSeasons(seasons, meId, showId) {
@@ -459,23 +450,9 @@ function safeHostname(url) {
     }
 }
 
-// The app's whole routing table. Extracted from useHashRoute so the regex is
-// testable on its own — the same split refresh-guard.js and submit-guard.js
-// draw between a rule and the wiring around it.
-//
-// Both numbers carry the [1-9]\d* guard: no leading zeros and no bare 0. A "0"
-// would otherwise match, mount the season view, and surface the API's raw
-// "season_id must be a positive integer" instead of falling back to the board.
-// An unparseable hash is the board, never a partial route.
-export function parseHashRoute(hash) {
-    const match = /^#\/season\/([1-9]\d*)(?:\/episode\/([1-9]\d*))?$/.exec(hash);
-    if (!match) return { seasonId: null, episode: null };
-    return { seasonId: Number(match[1]), episode: match[2] ? Number(match[2]) : null };
-}
-
 // Whether SeasonView's arrival jump should fire on this render: the rule behind
 // the effect that scrolls the episode a feed line named into view. Extracted
-// for the same reason parseHashRoute is — every condition below is a bug that
+// for the same reason the routes in routes.js are — every condition below is a bug that
 // happened, and none of them are testable inside the effect.
 //
 // `ready` is "the discussion has rendered its cards", not "the response
@@ -485,19 +462,12 @@ export function parseHashRoute(hash) {
 // measures a document with no episode cards in it at all — and, since the deps
 // it watches have both stopped changing, nothing runs it again once they mount.
 //
-// `openEpisode` must have caught up with `routeEpisode` for the same class of
-// reason one render later: the effect that expands the board and this one run
-// in the same commit, so on the commit that a new route arrives on, the DOM
-// still has the *previous* episode expanded and this one collapsed.
-// scrollIntoView measures a pixel target once, and the collapse that follows
-// slides the destination out from under it.
-//
-// `scrolled` is the last route episode actually jumped to, so a refetch — focus,
-// or a mutation's own refresh — cannot scroll the page out from under someone
-// reading elsewhere, and neither can collapsing and reopening the board by hand.
-export function shouldScrollToEpisode({ routeEpisode, openEpisode, ready, scrolled }) {
+// `scrolled` is the last episode already jumped to or opened by hand, so a
+// refetch — focus, or a mutation's own refresh — cannot scroll the page out from
+// under someone reading elsewhere, and neither can a tap on an episode header.
+// SeasonView clears it on each new arrival.
+export function shouldScrollToEpisode({ routeEpisode, ready, scrolled }) {
     if (routeEpisode == null || !ready) return false;
-    if (openEpisode !== routeEpisode) return false;
     return scrolled !== routeEpisode;
 }
 

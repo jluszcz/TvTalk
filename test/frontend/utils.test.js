@@ -18,12 +18,10 @@ import {
     settledAdjust,
     relativeTime,
     feedLine,
-    parseHashRoute,
     shouldScrollToEpisode,
     skipLabel,
     filterByShow,
     collapseShows,
-    resolveShowFilter,
     nextSeasonNumber,
     seasonsOfShow,
     moveTarget,
@@ -253,19 +251,6 @@ describe('collapseShows', () => {
             shows,
         );
         expect(sorted.map((e) => (e.group ? `show-${e.show_id}` : e.id))).toEqual([14, 'show-1']);
-    });
-});
-
-// ---------------------------------------------------------------------------
-// resolveShowFilter
-// ---------------------------------------------------------------------------
-
-describe('resolveShowFilter', () => {
-    it('accepts a saved id of an existing show, as a string', () => {
-        expect(resolveShowFilter('2', shows)).toBe(2);
-    });
-    it.each([null, undefined, '', 'abc', '99', '1.5'])('falls back to all for %j', (saved) => {
-        expect(resolveShowFilter(saved, shows)).toBe(null);
     });
 });
 
@@ -628,65 +613,20 @@ describe('linkLabel', () => {
 });
 
 // ---------------------------------------------------------------------------
-// parseHashRoute
-// ---------------------------------------------------------------------------
-
-describe('parseHashRoute', () => {
-    it('reads a season', () => {
-        expect(parseHashRoute('#/season/45')).toEqual({ seasonId: 45, episode: null });
-    });
-
-    it('reads a season and an episode', () => {
-        expect(parseHashRoute('#/season/45/episode/3')).toEqual({ seasonId: 45, episode: 3 });
-    });
-
-    it('falls back to the board for an empty hash', () => {
-        expect(parseHashRoute('')).toEqual({ seasonId: null, episode: null });
-    });
-
-    it('falls back to the board for an unrelated hash', () => {
-        expect(parseHashRoute('#/settings')).toEqual({ seasonId: null, episode: null });
-    });
-
-    // Season 0 and episode 0 do not exist. Matching them would mount the view
-    // and surface the API's raw validation error instead of showing the board.
-    it('rejects a zero season', () => {
-        expect(parseHashRoute('#/season/0')).toEqual({ seasonId: null, episode: null });
-    });
-
-    it('rejects a zero episode', () => {
-        expect(parseHashRoute('#/season/45/episode/0')).toEqual({ seasonId: null, episode: null });
-    });
-
-    it('rejects a leading zero', () => {
-        expect(parseHashRoute('#/season/045')).toEqual({ seasonId: null, episode: null });
-    });
-
-    it('rejects trailing junk', () => {
-        expect(parseHashRoute('#/season/45/episode/3/x')).toEqual({
-            seasonId: null,
-            episode: null,
-        });
-    });
-});
-
-// ---------------------------------------------------------------------------
 // shouldScrollToEpisode
 // ---------------------------------------------------------------------------
 
 describe('shouldScrollToEpisode', () => {
-    // The arrival state: the discussion has loaded, the board named by the
-    // route is the open one, and this route episode has not been jumped to yet.
-    const arrived = { routeEpisode: 3, openEpisode: 3, ready: true, scrolled: null };
+    // The arrival state: the discussion has loaded and this route episode has
+    // not been jumped to yet.
+    const arrived = { routeEpisode: 3, ready: true, scrolled: null };
 
     it('jumps on arrival', () => {
         expect(shouldScrollToEpisode(arrived)).toBe(true);
     });
 
     it('does not jump when the route names no episode', () => {
-        expect(shouldScrollToEpisode({ ...arrived, routeEpisode: null, openEpisode: null })).toBe(
-            false,
-        );
+        expect(shouldScrollToEpisode({ ...arrived, routeEpisode: null })).toBe(false);
     });
 
     // The bug this function exists for: `data` and `loading` settle in two
@@ -695,13 +635,6 @@ describe('shouldScrollToEpisode', () => {
     // holds nothing but "Loading…" — and nothing re-runs it afterwards.
     it('does not jump while the view is still loading', () => {
         expect(shouldScrollToEpisode({ ...arrived, ready: false })).toBe(false);
-    });
-
-    // The other half: the effect that opens the board and the one that jumps to
-    // it run in the same commit, so the jump would measure a layout in which the
-    // previously open board is still expanded and this one is still collapsed.
-    it('waits for the open board to catch up with the route', () => {
-        expect(shouldScrollToEpisode({ ...arrived, openEpisode: 8 })).toBe(false);
     });
 
     it('does not jump twice for the same route episode', () => {

@@ -274,14 +274,15 @@ function NowWatching({ users, shows, seasons, meId, onSetCurrentlyWatching, onJu
     `;
 }
 
-// Where the board's show filter is remembered. Per browser, not per person: it
-// is a view preference, and storage failing (private mode, blocked site data)
-// only means the filter resets to all shows.
+// Where the board's show filter is remembered. Per tab session: it has to
+// outlive the Board, which unmounts while a season is open, but opening the app
+// afresh starts on all shows rather than inside the last one visited. Storage
+// failing (private mode, blocked site data) only means it resets sooner.
 const SHOW_FILTER_KEY = 'showFilter';
 
 function readSavedShowFilter() {
     try {
-        return localStorage.getItem(SHOW_FILTER_KEY);
+        return sessionStorage.getItem(SHOW_FILTER_KEY);
     } catch {
         return null;
     }
@@ -289,8 +290,8 @@ function readSavedShowFilter() {
 
 function saveShowFilter(showId) {
     try {
-        if (showId == null) localStorage.removeItem(SHOW_FILTER_KEY);
-        else localStorage.setItem(SHOW_FILTER_KEY, String(showId));
+        if (showId == null) sessionStorage.removeItem(SHOW_FILTER_KEY);
+        else sessionStorage.setItem(SHOW_FILTER_KEY, String(showId));
     } catch {
         // Nothing to do: the filter still applies for this page view.
     }

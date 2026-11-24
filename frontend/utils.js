@@ -133,7 +133,7 @@ export function collapseShows(seasons) {
     );
 }
 
-// A saved filter comes back from localStorage as a string, or not at all, and
+// A saved filter comes back from sessionStorage as a string, or not at all, and
 // may name a show that has since been renamed away or never synced to this
 // browser. Anything that isn't a current show's id is "all shows".
 export function resolveShowFilter(saved, shows) {

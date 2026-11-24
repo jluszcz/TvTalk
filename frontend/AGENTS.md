@@ -10,9 +10,10 @@ of the root `AGENTS.md` so it loads only when working on these files.
       Both functions live in `utils.js` and are shared with tests.
 - A "Show" `<select>` beside the sort buttons filters the board to one show or
   "All shows". `readSavedShowFilter`/`saveShowFilter` in `board.js` own the
-  `showFilter` localStorage key, wrapped in try/catch so a browser that
-  refuses storage (private mode, blocked site data) just falls back to
-  reading it fresh every load. The stored value is a show id as a string;
+  `showFilter` sessionStorage key: the filter survives a reload and a trip into
+  a season, which unmounts the board, but a fresh tab starts on "All shows".
+  Access is wrapped in try/catch so a browser that refuses storage (private
+  mode, blocked site data) just resets the filter sooner. The stored value is a show id as a string;
   `resolveShowFilter` (`utils.js`) only validates a saved value against the
   shows currently on the board — it does not read or write the key itself —
   treating anything that isn't the id of a show on the board — unset,

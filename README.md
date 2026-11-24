@@ -14,7 +14,7 @@ Built on Cloudflare Workers with a D1 SQLite database, behind Cloudflare Access.
 
 - Add and edit shows and seasons from the board and the season view — nothing
   is deletable from the UI, but nothing has to be pre-loaded either
-- A show filter on the board, remembered per browser, and a per-show
+- A show filter on the board, remembered per tab session, and a per-show
   "currently watching" pick for each column, stored server-side and shown to
   everyone in Now Watching
 - One checkbox column per person/couple; you can only change your own (Access-derived identity)

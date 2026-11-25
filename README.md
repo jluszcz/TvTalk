@@ -8,6 +8,8 @@ has checked a season, it grays out and sorts to the bottom. Roster members add
 and edit shows and seasons themselves, right from the board and the season
 view.
 
+_Survivor_ is tracked here too; the Outwatch site redirects to TV Talk.
+
 Built on Cloudflare Workers with a D1 SQLite database, behind Cloudflare Access.
 
 ## Features
@@ -180,9 +182,9 @@ npx wrangler secret put ACCESS_AUD           # the application's AUD tag
 npm run dev
 ```
 
-The two shows seeded by the migrations — _The Great British Bake Off_ Season
-14 and _Lanterns_ Season 1 — are a starting point, not a limit: once the app
-is running, any roster member can add further shows and seasons from the
+The shows seeded by the migrations — _The Great British Bake Off_ Season 14,
+_Lanterns_ Season 1, and _Survivor_ Seasons 1–51 — are a starting point, not a
+limit: once the app is running, any roster member can add further shows and seasons from the
 board's "＋ Add season" form, or edit an existing one from its season view.
 
 ### Local dev identity

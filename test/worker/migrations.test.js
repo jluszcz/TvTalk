@@ -15,11 +15,9 @@ describe('seed', () => {
         ]);
     });
 
-    // Outwatch (../Outwatch) reads and writes this database as a Survivor-only
-    // frontend and finds the show by this exact name. The episode counts were
-    // transcribed by hand from Wikipedia: a dropped value leaves a 0 and a
-    // slipped digit leaves a 130, and both are caught here.
-    it('seeds Survivor seasons 1–51 for Outwatch', async () => {
+    // The episode counts were transcribed by hand from Wikipedia: a dropped
+    // value leaves a 0 and a slipped digit leaves a 130, and both are caught here.
+    it('seeds Survivor seasons 1–51', async () => {
         const { results } = await env.DB.prepare(
             `SELECT seasons.number AS number, seasons.subtitle AS subtitle,
                     seasons.url AS url, seasons.episode_count AS episodes
